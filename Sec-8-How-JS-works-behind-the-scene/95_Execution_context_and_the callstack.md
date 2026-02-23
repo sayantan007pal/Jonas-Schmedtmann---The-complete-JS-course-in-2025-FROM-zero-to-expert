@@ -752,6 +752,819 @@ console.log("4. End"); // Synchronous - runs immediately
 
 ---
 
+## 🧠 Call Stack + Heap: Inside the JavaScript Engine
+
+Understanding how the Call Stack and Heap work together inside the JS Engine is **critical** for interviews. This section breaks down exactly what happens in memory during code execution.
+
+### 🏗️ JS Engine Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         JAVASCRIPT ENGINE (V8, SpiderMonkey, etc.)          │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│   ┌─────────────────────────────┐    ┌─────────────────────────────────────┐│
+│   │        CALL STACK           │    │              HEAP                    ││
+│   │   (Execution Contexts)      │    │     (Memory Storage)                 ││
+│   │                             │    │                                      ││
+│   │  ┌─────────────────────┐   │    │   Objects, Arrays, Functions         ││
+│   │  │   Function EC       │   │    │   stored here as reference types     ││
+│   │  ├─────────────────────┤   │    │                                      ││
+│   │  │   Function EC       │   │    │  ┌──────┐  ┌──────┐  ┌──────┐       ││
+│   │  ├─────────────────────┤   │    │  │ obj1 │  │ arr1 │  │ func │       ││
+│   │  │   Global EC         │   │    │  └──────┘  └──────┘  └──────┘       ││
+│   │  └─────────────────────┘   │    │                                      ││
+│   │                             │    │                                      ││
+│   │  • Primitive values here   │    │  • Reference types here              ││
+│   │  • LIFO structure          │    │  • Unstructured memory pool          ││
+│   │  • Fast access             │    │  • Garbage collected                 ││
+│   │                             │    │                                      ││
+│   └─────────────────────────────┘    └─────────────────────────────────────┘│
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 🎭 Analogy: The Office Building
+
+Think of the JS Engine like an **office building**:
+
+| Component | Office Analogy | Purpose |
+|-----------|---------------|---------|
+| **Call Stack** | Stack of paperwork on desk | Current tasks being processed (LIFO) |
+| **Heap** | Filing cabinets in storage room | Long-term storage for complex documents |
+| **Primitives** | Sticky notes (copied easily) | Quick, disposable values stored in stack |
+| **References** | Filing cabinet keys | Pointers to actual documents in storage |
+
+---
+
+## 🔄 Synchronous Code Execution: Stack + Heap Deep Dive
+
+### Complete Sync Example with Memory Visualization
+
+```javascript
+// ===== SYNCHRONOUS EXECUTION: STACK + HEAP =====
+
+// 1. Primitive values (stored in Stack)
+const name = "Alice";
+const age = 25;
+const isStudent = true;
+
+// 2. Reference values (stored in Heap, reference in Stack)
+const person = {
+    firstName: "Alice",
+    lastName: "Smith",
+    scores: [85, 90, 78]
+};
+
+// 3. Function (stored in Heap)
+function calculateAverage(arr) {
+    let sum = 0;                    // Primitive - in Stack
+    for (let i = 0; i < arr.length; i++) {
+        sum += arr[i];
+    }
+    return sum / arr.length;        // Returns primitive
+}
+
+// 4. Function call and execution
+const average = calculateAverage(person.scores);
+
+// 5. Creating new reference to same object
+const anotherPerson = person;       // Points to SAME heap object!
+
+// 6. Mutation affects both references
+anotherPerson.age = 26;
+console.log(person.age);            // 26 - Both see the change!
+```
+
+### Step-by-Step Memory Execution
+
+```
+═══════════════════════════════════════════════════════════════════════════════
+                    STEP 1: Global Execution Context Created
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                              HEAP
+┌─────────────────────────────┐        ┌─────────────────────────────────────┐
+│                             │        │                                     │
+│   GLOBAL EC                 │        │   (Empty - no objects yet)          │
+│   ─────────────             │        │                                     │
+│   Variable Environment:     │        │                                     │
+│   • name: <uninitialized>   │        │                                     │
+│   • age: <uninitialized>    │        │                                     │
+│   • person: <uninitialized> │        │                                     │
+│   • calculateAverage: ƒ ──────────────▶ (function stored here)            │
+│                             │        │                                     │
+└─────────────────────────────┘        └─────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                    STEP 2: Primitives Assigned (Stack)
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                              HEAP
+┌─────────────────────────────┐        ┌─────────────────────────────────────┐
+│                             │        │                                     │
+│   GLOBAL EC                 │        │   0x001: calculateAverage() {...}   │
+│   ─────────────             │        │                                     │
+│   Variable Environment:     │        │                                     │
+│   • name: "Alice"     ◀── Stored directly in stack (primitive)             │
+│   • age: 25           ◀── Stored directly in stack (primitive)             │
+│   • isStudent: true   ◀── Stored directly in stack (primitive)             │
+│   • person: <pending>       │        │                                     │
+│   • calculateAverage: 0x001─────────▶│                                     │
+│                             │        │                                     │
+└─────────────────────────────┘        └─────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                    STEP 3: Object Created (Heap)
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                              HEAP
+┌─────────────────────────────┐        ┌─────────────────────────────────────┐
+│                             │        │                                     │
+│   GLOBAL EC                 │        │   0x001: calculateAverage() {...}   │
+│   ─────────────             │        │                                     │
+│   • name: "Alice"           │        │   0x002: {                          │
+│   • age: 25                 │        │       firstName: "Alice",           │
+│   • isStudent: true         │        │       lastName: "Smith",            │
+│   • person: 0x002 ──────────────────▶│       scores: 0x003                 │
+│   • calculateAverage: 0x001 │        │   }                                 │
+│                             │        │                                     │
+│                             │        │   0x003: [85, 90, 78]               │
+│                             │        │   (Array is also a reference!)     │
+└─────────────────────────────┘        └─────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+                    STEP 4: Function Called - New EC Created
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                              HEAP
+┌─────────────────────────────┐        ┌─────────────────────────────────────┐
+│                             │        │                                     │
+│   calculateAverage EC       │        │   0x001: calculateAverage() {...}   │
+│   ─────────────────────     │        │                                     │
+│   • arr: 0x003 ─────────────────────▶│   0x002: {person object}            │
+│   • sum: 0 → 85 → 175 → 253 │        │                                     │
+│   • i: 0 → 1 → 2 → 3        │        │   0x003: [85, 90, 78]               │
+│   • return value: 84.33...  │        │                                     │
+├─────────────────────────────┤        │                                     │
+│   GLOBAL EC                 │        │                                     │
+│   • person: 0x002           │        │                                     │
+│   • average: <pending>      │        │                                     │
+└─────────────────────────────┘        └─────────────────────────────────────┘
+
+Note: 'arr' receives REFERENCE to the array, not a copy!
+
+═══════════════════════════════════════════════════════════════════════════════
+                    STEP 5: Function Returns, EC Popped
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                              HEAP
+┌─────────────────────────────┐        ┌─────────────────────────────────────┐
+│                             │        │                                     │
+│   GLOBAL EC                 │        │   0x001: calculateAverage() {...}   │
+│   ─────────────             │        │                                     │
+│   • name: "Alice"           │        │   0x002: {person object}            │
+│   • age: 25                 │        │                                     │
+│   • person: 0x002           │        │   0x003: [85, 90, 78]               │
+│   • average: 84.33...  ◀── Primitive returned, stored in stack             │
+│   • anotherPerson: 0x002 ───────────▶│ (Same as person!)                   │
+│                             │        │                                     │
+└─────────────────────────────┘        └─────────────────────────────────────┘
+
+⚠️ CRITICAL: anotherPerson and person point to SAME heap object!
+```
+
+### 🔑 Key Insight: Primitive vs Reference Copying
+
+```javascript
+// ===== PRIMITIVE COPYING (Stack) =====
+let a = 10;
+let b = a;      // Copies VALUE
+b = 20;
+console.log(a); // 10 - unchanged! (separate copy)
+
+// ===== REFERENCE COPYING (Heap) =====
+const obj1 = { value: 10 };
+const obj2 = obj1;          // Copies REFERENCE (address)
+obj2.value = 20;
+console.log(obj1.value);    // 20 - changed! (same object)
+
+// Visualization:
+// 
+// PRIMITIVES:                    REFERENCES:
+// Stack                          Stack              Heap
+// ┌─────────┐                    ┌─────────┐       ┌─────────────┐
+// │ a: 10   │                    │obj1:0x01├──────▶│ value: 20   │
+// │ b: 20   │ (separate)         │obj2:0x01├──────▶│             │
+// └─────────┘                    └─────────┘       └─────────────┘
+//                                (both point to same!)
+```
+
+---
+
+## ⚡ Asynchronous Code Execution: async/await with Stack + Heap
+
+### Understanding async/await at Engine Level
+
+```javascript
+// ===== ASYNC/AWAIT EXECUTION PATTERN =====
+
+console.log("1. Script start");
+
+async function fetchUserData() {
+    console.log("2. Inside async function");
+    
+    // Simulate API call
+    const user = await fetch('/api/user');    // PAUSE HERE
+    
+    console.log("4. After await");
+    return user;
+}
+
+const promise = fetchUserData();
+console.log("3. After calling async function");
+
+// Output:
+// 1. Script start
+// 2. Inside async function  
+// 3. After calling async function  ← Continues while waiting!
+// 4. After await                   ← Resumes when data ready
+```
+
+### Complete async/await Example with Full Visualization
+
+```javascript
+// ===== COMPREHENSIVE ASYNC/AWAIT EXAMPLE =====
+
+console.log("🚀 Start");
+
+// Regular object in Heap
+const config = {
+    apiUrl: "https://api.example.com",
+    timeout: 5000
+};
+
+// Async function definition (stored in Heap)
+async function getUserProfile(userId) {
+    console.log(`📡 Fetching user ${userId}...`);
+    
+    // Simulating async operation with Promise
+    const userData = await new Promise((resolve) => {
+        setTimeout(() => {
+            resolve({
+                id: userId,
+                name: "John Doe",
+                email: "john@example.com"
+            });
+        }, 1000);
+    });
+    
+    console.log("✅ Data received!");
+    return userData;
+}
+
+async function processData() {
+    console.log("⚙️ Processing started");
+    
+    const user = await getUserProfile(123);
+    
+    console.log("📋 User:", user.name);
+    return user;
+}
+
+// Call the async function
+const resultPromise = processData();
+
+console.log("🏃 Synchronous code continues...");
+
+// Handle the resolved promise
+resultPromise.then(result => {
+    console.log("🎉 Final result:", result);
+});
+
+console.log("🔚 Script end");
+
+/* OUTPUT ORDER:
+🚀 Start
+⚙️ Processing started
+📡 Fetching user 123...
+🏃 Synchronous code continues...
+🔚 Script end
+(1 second pause)
+✅ Data received!
+📋 User: John Doe
+🎉 Final result: { id: 123, name: "John Doe", email: "john@example.com" }
+*/
+```
+
+### Step-by-Step async/await Execution Visualization
+
+```
+═══════════════════════════════════════════════════════════════════════════════
+        ASYNC/AWAIT EXECUTION: CALL STACK + HEAP + EVENT LOOP
+═══════════════════════════════════════════════════════════════════════════════
+
+STEP 1: Initial Setup - "🚀 Start"
+──────────────────────────────────────────────────────────────────────────────
+
+CALL STACK                  WEB APIs        MICROTASK Q    CALLBACK Q
+┌──────────────────┐       ┌─────────┐     ┌──────────┐   ┌──────────┐
+│ console.log      │       │         │     │          │   │          │
+│ "🚀 Start"       │       │         │     │          │   │          │
+├──────────────────┤       └─────────┘     └──────────┘   └──────────┘
+│   Global EC      │
+└──────────────────┘       
+
+HEAP:
+┌─────────────────────────────────────────────────────────────────┐
+│  0x001: config { apiUrl: "...", timeout: 5000 }                 │
+│  0x002: getUserProfile() { async function... }                  │
+│  0x003: processData() { async function... }                     │
+└─────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 2: processData() Called - "⚙️ Processing started"
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  WEB APIs        MICROTASK Q    CALLBACK Q
+┌──────────────────┐       ┌─────────┐     ┌──────────┐   ┌──────────┐
+│  processData EC  │       │         │     │          │   │          │
+│  (async)         │       │         │     │          │   │          │
+├──────────────────┤       └─────────┘     └──────────┘   └──────────┘
+│   Global EC      │
+└──────────────────┘
+
+Output so far: "🚀 Start" → "⚙️ Processing started"
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 3: getUserProfile(123) Called - "📡 Fetching..."
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  WEB APIs        MICROTASK Q    CALLBACK Q
+┌──────────────────┐       ┌─────────┐     ┌──────────┐   ┌──────────┐
+│ getUserProfile EC│       │         │     │          │   │          │
+│ userId: 123      │       │         │     │          │   │          │
+├──────────────────┤       └─────────┘     └──────────┘   └──────────┘
+│  processData EC  │
+├──────────────────┤
+│   Global EC      │
+└──────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 4: 🔥 AWAIT HIT! Function Suspends - Control Returns
+═══════════════════════════════════════════════════════════════════════════════
+
+        ┌─────────────────────────────────────────────────────────┐
+        │  When JavaScript encounters 'await':                    │
+        │                                                          │
+        │  1. The Promise is created and starts executing         │
+        │  2. The async function is SUSPENDED (paused)            │
+        │  3. Control returns to the calling code                 │
+        │  4. The suspended state is saved for later resumption   │
+        └─────────────────────────────────────────────────────────┘
+
+CALL STACK                  WEB APIs              MICROTASK Q    CALLBACK Q
+┌──────────────────┐       ┌────────────────┐    ┌──────────┐   ┌──────────┐
+│                  │       │                │    │          │   │          │
+│ ← ECs suspended  │       │  Timer: 1000ms │    │          │   │          │
+│   and saved!     │       │  (setTimeout)  │    │          │   │          │
+├──────────────────┤       └────────────────┘    └──────────┘   └──────────┘
+│   Global EC      │             ↑
+└──────────────────┘    Promise waiting here
+
+SUSPENDED EXECUTION CONTEXTS (saved in memory):
+┌────────────────────────────────────────────────────────────────┐
+│  Suspended: processData EC                                      │
+│  └── Waiting for: getUserProfile to resolve                    │
+│                                                                 │
+│  Suspended: getUserProfile EC                                   │
+│  └── Waiting for: setTimeout Promise to resolve                │
+│  └── Will resume at: "const userData = ..." line              │
+└────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 5: Synchronous Code Continues! - "🏃 Synchronous..." & "🔚 Script end"
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  WEB APIs              MICROTASK Q    CALLBACK Q
+┌──────────────────┐       ┌────────────────┐    ┌──────────┐   ┌──────────┐
+│ console.log      │       │  Timer: 800ms  │    │          │   │          │
+│ "🏃/🔚 messages" │       │  (counting)    │    │          │   │          │
+├──────────────────┤       └────────────────┘    └──────────┘   └──────────┘
+│   Global EC      │
+└──────────────────┘
+
+Output so far: "🚀 Start" → "⚙️ Processing started" → "📡 Fetching..." 
+              → "🏃 Synchronous code continues..." → "🔚 Script end"
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 6: Timer Expires, Promise Resolves, Microtask Queued
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  WEB APIs        MICROTASK QUEUE        CALLBACK Q
+┌──────────────────┐       ┌─────────┐     ┌──────────────────┐   ┌──────────┐
+│   (empty)        │       │ (empty) │     │ Resume           │   │          │
+│← waiting for     │       │         │     │ getUserProfile() │   │          │
+│  event loop      │       │         │     │ with userData    │   │          │
+├──────────────────┤       └─────────┘     └──────────────────┘   └──────────┘
+│   Global EC      │
+└──────────────────┘
+
+HEAP (new object created):
+┌─────────────────────────────────────────────────────────────────┐
+│  0x004: { id: 123, name: "John Doe", email: "john@example.com" }│
+│         ↑ This is the resolved userData                         │
+└─────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 7: Event Loop Resumes getUserProfile() - "✅ Data received!"
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  MICROTASK QUEUE
+┌──────────────────────┐   ┌───────────────────────────────┐
+│ getUserProfile EC    │   │ (being processed)             │
+│ (RESUMED!)           │   │                               │
+│ userData: 0x004 ─────────▶ { id:123, name:"John Doe"... }│
+├──────────────────────┤   └───────────────────────────────┘
+│   Global EC          │
+└──────────────────────┘
+
+// getUserProfile returns, then processData resumes...
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 8: processData Resumes - "📋 User: John Doe"
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  
+┌────────────────────────┐
+│ processData EC         │
+│ (RESUMED!)             │
+│ user: 0x004            │
+│ → logs user.name       │
+├────────────────────────┤
+│   Global EC            │
+└────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+STEP 9: .then() Callback Executes - "🎉 Final result"
+═══════════════════════════════════════════════════════════════════════════════
+
+CALL STACK                  MICROTASK QUEUE
+┌────────────────────────┐ ┌──────────────────────┐
+│ .then() callback       │ │ (processed)          │
+│ result: 0x004          │ │                      │
+├────────────────────────┤ └──────────────────────┘
+│   Global EC            │
+└────────────────────────┘
+
+FINAL OUTPUT (in order):
+┌────────────────────────────────────────────────────────────────┐
+│ 1. 🚀 Start                        (Sync - immediate)         │
+│ 2. ⚙️ Processing started           (Sync - immediate)         │
+│ 3. 📡 Fetching user 123...         (Sync - immediate)         │
+│ 4. 🏃 Synchronous code continues...(Sync - immediate)         │
+│ 5. 🔚 Script end                   (Sync - immediate)         │
+│    ─── 1 second pause ───                                      │
+│ 6. ✅ Data received!               (Async - after await)      │
+│ 7. 📋 User: John Doe               (Async - after await)      │
+│ 8. 🎉 Final result: {...}          (Async - .then callback)   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 🆚 Sync vs Async: Side-by-Side Comparison
+
+### The Same Task: Sync vs Async Implementation
+
+```javascript
+// ===== SYNCHRONOUS VERSION (Blocking) =====
+function fetchDataSync() {
+    console.log("1. Start sync");
+    
+    // This would BLOCK everything (hypothetical sync fetch)
+    // const data = syncFetch('/api/data'); // ❌ Blocks entire thread!
+    
+    // Simulating with a loop (BAD PRACTICE)
+    const start = Date.now();
+    while (Date.now() - start < 2000) {} // Blocks for 2 seconds!
+    
+    console.log("2. Data ready");
+    console.log("3. End sync");
+}
+
+fetchDataSync();
+console.log("4. After function"); // Waits until function completes!
+
+// Output: 1 → (2 second freeze) → 2 → 3 → 4
+
+
+// ===== ASYNCHRONOUS VERSION (Non-Blocking) =====
+async function fetchDataAsync() {
+    console.log("1. Start async");
+    
+    // This does NOT block!
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    console.log("3. Data ready");
+    console.log("4. End async");
+}
+
+fetchDataAsync();
+console.log("2. After function"); // Runs IMMEDIATELY!
+
+// Output: 1 → 2 → (2 second wait) → 3 → 4
+```
+
+### Comparison Table
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                    SYNCHRONOUS vs ASYNCHRONOUS EXECUTION                     │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  Aspect              │  Synchronous            │  Asynchronous (async/await)│
+│  ────────────────────│────────────────────────│────────────────────────────│
+│  Execution           │  Line by line           │  Can pause and resume      │
+│  Blocking            │  YES - blocks thread    │  NO - non-blocking         │
+│  Call Stack          │  Functions stay until   │  Functions can be          │
+│                      │  complete               │  suspended                 │
+│  Order               │  Predictable            │  Depends on timing         │
+│  Error Handling      │  try/catch              │  try/catch + .catch()      │
+│  Use Case            │  Simple calculations    │  I/O operations, APIs      │
+│  User Experience     │  UI freezes             │  UI stays responsive       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### 🍳 Analogy: The Restaurant Kitchen
+
+**Synchronous (One Chef, One Order):**
+```
+Chef working on Order A → Can't start Order B → Order B waits → Customer angry!
+
+Timeline:
+[  Order A cooking...   ][ Order A serving ][ Order B starts... ]
+|___10 minutes___________|__________________|_____________________|
+                                            ↑ Customer B waited 10 min!
+```
+
+**Asynchronous (Smart Kitchen with Timers):**
+```
+Chef starts Order A → Sets timer → Starts Order B → Timer rings → Serves both!
+
+Timeline:
+[ Start A ][ Start B ][  Both cooking simultaneously  ][ Serve both! ]
+|_1 min___|_1 min___|________8 minutes________________|_______________|
+                                                       ↑ Both customers happy!
+```
+
+---
+
+## 🔧 Real-World async/await Patterns
+
+### Pattern 1: Sequential Execution (When Order Matters)
+
+```javascript
+// ===== SEQUENTIAL ASYNC OPERATIONS =====
+async function processUserSequentially() {
+    console.log("Starting sequential process...");
+    
+    // Each await waits for previous to complete
+    const user = await fetchUser(123);          // Wait 1 sec
+    const posts = await fetchPosts(user.id);    // Wait 1 sec (starts AFTER user)
+    const comments = await fetchComments(posts[0].id); // Wait 1 sec
+    
+    // Total time: ~3 seconds (1 + 1 + 1)
+    
+    return { user, posts, comments };
+}
+
+// CALL STACK during execution:
+// 
+// Step 1: [processUser] → await fetchUser → [suspended] → Stack empties
+// Step 2: User returns → [processUser resumes] → await fetchPosts → [suspended]
+// Step 3: Posts return → [processUser resumes] → await fetchComments → [suspended]
+// Step 4: Comments return → [processUser resumes] → returns result
+```
+
+### Pattern 2: Parallel Execution (When Order Doesn't Matter)
+
+```javascript
+// ===== PARALLEL ASYNC OPERATIONS =====
+async function processUserParallel() {
+    console.log("Starting parallel process...");
+    
+    // All start simultaneously!
+    const [user, products, notifications] = await Promise.all([
+        fetchUser(123),         // Starts immediately
+        fetchProducts(),        // Starts immediately (parallel!)
+        fetchNotifications()    // Starts immediately (parallel!)
+    ]);
+    
+    // Total time: ~1 second (max of all three, not sum!)
+    
+    return { user, products, notifications };
+}
+
+// CALL STACK during parallel execution:
+// 
+// Step 1: [processUser] → Promise.all starts 3 fetches → [suspended]
+// 
+// WEB APIs (all running in parallel):
+// ├── fetchUser timer
+// ├── fetchProducts timer  
+// └── fetchNotifications timer
+// 
+// Step 2: All complete → [processUser resumes] → returns result
+```
+
+### Pattern 3: Error Handling with try/catch
+
+```javascript
+// ===== ASYNC ERROR HANDLING =====
+async function fetchWithErrorHandling() {
+    try {
+        console.log("Attempting fetch...");
+        
+        const response = await fetch('/api/data');
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log("Success:", data);
+        return data;
+        
+    } catch (error) {
+        console.error("Failed:", error.message);
+        // Handle error gracefully
+        return null;
+        
+    } finally {
+        console.log("Cleanup operations here");
+    }
+}
+
+// CALL STACK with error:
+// 
+// [fetchWithErrorHandling] 
+//     → try block starts
+//     → await fetch (suspends)
+//     → ERROR occurs
+//     → catch block executes (same EC)
+//     → finally block executes
+//     → EC pops off stack
+```
+
+---
+
+## 🎯 Interview Questions: Stack + Heap + Async
+
+### Q9: What is the difference between Stack and Heap in JavaScript?
+
+**Answer:**
+> | Stack | Heap |
+> |-------|------|
+> | Stores **primitives** (numbers, strings, booleans) | Stores **reference types** (objects, arrays, functions) |
+> | Fixed size, fast access | Dynamic size, slower access |
+> | LIFO structure | Unstructured memory pool |
+> | Automatically cleaned when EC pops | Garbage collected when no references |
+> | Stores **references/pointers** to heap objects | Stores actual object data |
+
+### Q10: What happens to the Call Stack when an async function hits `await`?
+
+**Answer:**
+```javascript
+async function example() {
+    console.log("Before await");
+    await somePromise;          // At this point:
+    console.log("After await");  // 1. Current EC is SUSPENDED (saved)
+}                                // 2. EC is POPPED from call stack
+                                 // 3. Control returns to caller
+example();                       // 4. When promise resolves, EC is
+console.log("After call");       //    PUSHED back and resumes
+```
+> The function's execution context is **suspended** (not destroyed), saved with its state, and pushed back onto the stack when the awaited Promise resolves.
+
+### Q11: Predict the Output - async/await
+
+```javascript
+async function first() {
+    console.log(1);
+    await second();
+    console.log(4);
+}
+
+async function second() {
+    console.log(2);
+}
+
+first();
+console.log(3);
+```
+
+**Answer:**
+```
+1
+2
+3
+4
+```
+**Explanation:**
+1. `first()` called → logs `1`
+2. `await second()` → `second()` runs → logs `2`
+3. `await` suspends `first()`, control returns → logs `3`
+4. Microtask executes → `first()` resumes → logs `4`
+
+### Q12: Why are objects stored in Heap and primitives in Stack?
+
+**Answer:**
+> **Primitives (Stack):**
+> - Fixed size (number = 8 bytes, boolean = 1 byte)
+> - Can be efficiently copied directly
+> - Immutable - operations create new values
+>
+> **Objects (Heap):**
+> - Dynamic size (can grow/shrink)
+> - Expensive to copy entirely
+> - Mutable - can be modified in place
+> - Need to be shared across multiple variables (via references)
+>
+> **Performance:** Stack operations are O(1), Heap requires memory management.
+
+### Q13: What's the difference between Promise.all, Promise.race, and sequential awaits?
+
+**Answer:**
+```javascript
+// Sequential: 3 seconds total (1+1+1)
+const a = await fetchA();  // 1 sec
+const b = await fetchB();  // 1 sec  
+const c = await fetchC();  // 1 sec
+
+// Promise.all: 1 second total (parallel, waits for ALL)
+const [a, b, c] = await Promise.all([fetchA(), fetchB(), fetchC()]);
+
+// Promise.race: Fastest wins (~1 sec, returns FIRST to complete)
+const first = await Promise.race([fetchA(), fetchB(), fetchC()]);
+
+// Promise.allSettled: 1 second (parallel, ALL complete regardless of success/fail)
+const results = await Promise.allSettled([fetchA(), fetchB(), fetchC()]);
+// [{status: "fulfilled", value: ...}, {status: "rejected", reason: ...}, ...]
+```
+
+---
+
+## 🧠 Memory Model Summary Diagram
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     COMPLETE JAVASCRIPT RUNTIME MODEL                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│    ┌──────────────────────────────────────────────────────────────┐         │
+│    │                     JS ENGINE (V8, etc.)                      │         │
+│    │  ┌─────────────────────┐    ┌─────────────────────────────┐  │         │
+│    │  │    CALL STACK       │    │           HEAP              │  │         │
+│    │  │                     │    │                             │  │         │
+│    │  │  ┌───────────────┐ │    │   ┌───────┐  ┌───────┐     │  │         │
+│    │  │  │  Function EC  │ │    │   │Object │  │ Array │     │  │         │
+│    │  │  ├───────────────┤ │    │   └───────┘  └───────┘     │  │         │
+│    │  │  │  Function EC  │ │    │                             │  │         │
+│    │  │  ├───────────────┤ │    │   ┌──────────────────┐     │  │         │
+│    │  │  │   Global EC   │ │    │   │ Async Functions  │     │  │         │
+│    │  │  └───────────────┘ │    │   │ (suspended ECs)  │     │  │         │
+│    │  │                     │    │   └──────────────────┘     │  │         │
+│    │  └─────────────────────┘    └─────────────────────────────┘  │         │
+│    └──────────────────────────────────────────────────────────────┘         │
+│                                      │                                       │
+│              ┌───────────────────────┼───────────────────────┐              │
+│              │                       ▼                       │              │
+│    ┌─────────────────────┐   ┌───────────────┐   ┌─────────────────────┐   │
+│    │      WEB APIs       │   │  EVENT LOOP   │   │       QUEUES        │   │
+│    │  ────────────────   │   │  ───────────  │   │  ────────────────   │   │
+│    │  • setTimeout       │   │               │   │  Microtask Queue    │   │
+│    │  • fetch            │◀──│  Continuously │──▶│  ├── Promises       │   │
+│    │  • addEventListener │   │  checking...  │   │  └── queueMicrotask │   │
+│    │  • DOM operations   │   │               │   │                     │   │
+│    │                     │   │  1. Stack     │   │  Callback Queue     │   │
+│    │                     │   │     empty?    │   │  ├── setTimeout     │   │
+│    │                     │   │  2. Micro Q   │   │  ├── setInterval    │   │
+│    │                     │   │  3. Callback Q│   │  └── I/O callbacks  │   │
+│    └─────────────────────┘   └───────────────┘   └─────────────────────┘   │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+EXECUTION ORDER:
+1. All synchronous code (Call Stack)
+2. Microtask Queue (Promises, async/await continuations)  
+3. Callback Queue (setTimeout, events)
+4. Repeat...
+```
+
+---
+
 ## Interview Questions & Answers
 
 ### Q1: What is an Execution Context in JavaScript?
