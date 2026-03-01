@@ -2,9 +2,9 @@
 // cd "/Users/sayantanpal100/Desktop/Udemy Projects/Jonas-Schmedtmann---The-complete-JS-course-in-2025-FROM-zero-to-expert/Sec-16-Asynchronus-Javascript-Promises-Async-Await-AJAX"
 // npx serve
 
-
+function getCountryData(country){
 const request = new XMLHttpRequest()
-request.open('GET', "https://restcountries.com/v2/name/portugal")
+request.open('GET', `https://restcountries.com/v2/name/${country}`)
 request.send()
 
 request.addEventListener('load', function(){
@@ -32,3 +32,8 @@ request.addEventListener('load', function(){
     // This is often used with CSS transitions for fade-in effects
     document.querySelector('.country').style.opacity = 1
 })
+
+}
+
+getCountryData('india')
+getCountryData('usa')
