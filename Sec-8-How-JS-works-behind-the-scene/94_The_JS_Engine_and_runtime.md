@@ -317,20 +317,90 @@ Stack                    ┌─────────────────�
 Both obj1 and obj2 point to the SAME object!
 */
 
-// ✅ Creating a TRUE COPY (Shallow)
+// ✅ Creating a SHALLOW COPY (Only top-level properties are independent)
 let obj3 = { value: 10 };
 let obj4 = { ...obj3 };  // Spread operator creates NEW object
 obj4.value = 20;
 console.log(obj3.value); // 10 (unchanged!)
 console.log(obj4.value); // 20
 
-// ✅ Creating a DEEP COPY (Nested objects)
+// ⚠️ SHALLOW COPY PROBLEM: Nested objects are STILL SHARED!
+let shallowOriginal = { value: 10, nested: { inner: 5 } };
+let shallowCopy = { ...shallowOriginal };  // Shallow copy
+shallowCopy.value = 99;           // Top-level: independent ✅
+shallowCopy.nested.inner = 999;   // Nested: SHARED reference! ❌
+console.log(shallowOriginal.value);        // 10 (unchanged - top level OK)
+console.log(shallowOriginal.nested.inner); // 999 (CHANGED! Shallow copy fails here!)
+
+/*
+Why Shallow Copy Fails with Nested Objects:
+═══════════════════════════════════════════════════════════════
+
+     STACK                              HEAP
+┌────────────────┬─────────┐      ┌─────────────────────────┐
+│ shallowOriginal│  0x001  │─────▶│ { value: 10,            │
+├────────────────┼─────────┤      │   nested: 0x002 ───────▶│──┐
+│ shallowCopy    │  0x003  │─────▶│ { value: 99,            │  │
+└────────────────┴─────────┘      │   nested: 0x002 ───────▶│──┤
+                                  └─────────────────────────┘  │
+                                                               ▼
+                                  ┌─────────────────────────┐
+                                  │ { inner: 999 }          │ ← SAME object!
+                                  │ (Address: 0x002)        │   Both point here
+                                  └─────────────────────────┘
+
+Both shallowOriginal.nested and shallowCopy.nested point to the SAME nested object!
+*/
+
+// ✅ Creating a DEEP COPY (All levels are independent)
 let nested1 = { outer: { inner: 10 } };
 let nested2 = JSON.parse(JSON.stringify(nested1)); // Deep copy
-// Or use: structuredClone(nested1) in modern JS
+// Or use: structuredClone(nested1) in modern JS (recommended!)
 nested2.outer.inner = 20;
 console.log(nested1.outer.inner); // 10 (unchanged!)
 console.log(nested2.outer.inner); // 20
+
+/*
+Deep Copy Creates Completely Independent Objects:
+═══════════════════════════════════════════════════════════════
+
+     STACK                              HEAP
+┌─────────┬─────────┐             ┌─────────────────────────┐
+│ nested1 │  0x001  │────────────▶│ { outer: 0x002 }        │
+├─────────┼─────────┤             └───────────┬─────────────┘
+│ nested2 │  0x003  │──┐                      ▼
+└─────────┴─────────┘  │          ┌─────────────────────────┐
+                       │          │ { inner: 10 } (0x002)   │ ← Original nested
+                       │          └─────────────────────────┘
+                       │
+                       │          ┌─────────────────────────┐
+                       └─────────▶│ { outer: 0x004 }        │
+                                  └───────────┬─────────────┘
+                                              ▼
+                                  ┌─────────────────────────┐
+                                  │ { inner: 20 } (0x004)   │ ← NEW nested copy
+                                  └─────────────────────────┘
+
+Everything is duplicated - completely independent!
+*/
+
+/*
+┌─────────────────────────────────────────────────────────────────────────┐
+│              SHALLOW vs DEEP COPY - Quick Reference                      │
+├─────────────────┬───────────────────────┬───────────────────────────────┤
+│    Copy Type    │  Top-level properties │     Nested objects            │
+├─────────────────┼───────────────────────┼───────────────────────────────┤
+│  Shallow Copy   │  Independent copy ✅  │  SHARED reference ❌          │
+│  {...obj}       │  (safe to modify)     │  (modifying affects original) │
+├─────────────────┼───────────────────────┼───────────────────────────────┤
+│  Deep Copy      │  Independent copy ✅  │  Independent copy ✅          │
+│  structuredClone│  (safe to modify)     │  (safe to modify)             │
+└─────────────────┴───────────────────────┴───────────────────────────────┘
+
+When to use which:
+• Shallow Copy: Flat objects with no nesting (faster, simpler)
+• Deep Copy: Objects with nested objects/arrays (safer, complete independence)
+*/
 ```
 
 ### Memory Heap in Node.js Environment
