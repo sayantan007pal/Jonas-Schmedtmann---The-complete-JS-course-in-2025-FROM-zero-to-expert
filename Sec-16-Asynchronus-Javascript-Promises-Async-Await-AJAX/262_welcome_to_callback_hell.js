@@ -1,9 +1,10 @@
-function getCountryData(data){
+function getCountryData(data , className = ''){
+        const neighbourLabel = className === 'neighbour' ? ' (Neighbour)' : ''
         const html = `
-        <article class ="country">
+        <article class ="country ${className}">
             <img class="country__img" src="${data.flag}" />
             <div class="country__data">
-                <h3 class="country__name">${data.name}</h3>
+                <h3 class="country__name">${data.name}${neighbourLabel}</h3>
                 <h4 class="country__region">${data.region}</h4>
                 <p class="country__row"><span>👫</span>${(data.population/1000000).toFixed(1)}M people</p>
                 <p class="country__row"><span>🗣️</span>${data.languages[0].name}</p>
@@ -47,7 +48,7 @@ function getCountryAndNeighbour(country){
             const data2 = JSON.parse(this.responseText)
             console.log(data2)
             //get country 2 data
-            getCountryData(data2)
+            getCountryData(data2, 'neighbour')
         })
     })
 }
