@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Throwing Errors Manually</title>
+</head>
+<body>
+    <h1>Throwing Errors Manually</h1>
+    <p>Open the browser console (F12) to see the API response</p>
+
+    <!--
+        COUNTRIES CONTAINER
+        ───────────────────
+        This div is the target for dynamically injected country cards.
+        JavaScript uses document.querySelector('.countries') to reference it.
+
+        opacity: 0
+            Hides the container on page load so the user doesn't see an
+            empty box while the API request is in flight (loading state).
+
+        transition: opacity 0.5s
+            When JS sets style.opacity = 1 (inside .finally()), the browser
+            animates the change smoothly over 0.5 seconds (fade-in effect).
+
+        Why .finally()?
+            .finally() runs whether the fetch succeeded OR failed, so the
+            container always fades in — either showing country cards (success)
+            or an error message (failure). This keeps the UI consistent.
+    -->
+    <div class="countries" style="opacity: 0; transition: opacity 0.5s;"></div>
+
+    <!--
+        Script is placed at the bottom of <body> (not in <head>) so that
+        the DOM elements above are already parsed before the JS runs.
+        This ensures document.querySelector('.countries') finds the div.
+    -->
+    <script src="267_throwing_errors_manually.js"></script>
+</body>
+</html>
