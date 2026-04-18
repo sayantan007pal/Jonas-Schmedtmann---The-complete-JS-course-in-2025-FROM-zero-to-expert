@@ -278,7 +278,9 @@ Memory Layout:
 */
 ```
 
-### Reference vs Value - The Critical Difference
+### ⚠️ **VERY IMPORTANT:** Reference vs Value - The Critical Difference ⚠️
+
+> **🚨 This is a critical concept that every JavaScript developer MUST understand!**
 
 ```javascript
 // 🔢 Primitive Types: COPIED BY VALUE
