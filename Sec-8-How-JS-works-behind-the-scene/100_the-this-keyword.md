@@ -17,7 +17,7 @@ Similarly, `this` in JavaScript refers to **different objects** depending on **W
 
 | Context | What `this` Refers To |
 |---------|----------------------|
-| Alone (global scope) | `window` object (browser) / `global` (Node.js) |
+| Alone (global scope) | `window` (browser) / `global` (Node.js) / `globalThis` (universal) |
 | Regular function | `window` (sloppy mode) / `undefined` (strict mode) |
 | Object method | The object that owns the method |
 | Arrow function | Inherits `this` from parent scope (lexical `this`) |
@@ -25,6 +25,8 @@ Similarly, `this` in JavaScript refers to **different objects** depending on **W
 | `new` keyword | The newly created object instance |
 | `call()` / `apply()` | The object passed as first argument |
 | `bind()` | The object passed as argument (returns new function) |
+| HOF callbacks (map, forEach) | `thisArg` if provided, else `undefined`/`window` |
+| Method borrowing | The object passed to `call()`/`apply()` |
 
 ### 🏆 Precedence Order (Most Important for Interviews!)
 
@@ -496,7 +498,410 @@ document.getElementById('btn').addEventListener('click', counter.increment);
 
 ---
 
-## 8️⃣ Where `this` Does NOT Point as Expected (Common Pitfalls)
+## 8️⃣ `this` in Global Scope (Deep Dive)
+
+Understanding `this` in the global scope is crucial for interviews as it varies across environments.
+
+### Browser Environment
+
+```javascript
+// In browser's global scope
+console.log(this === window); // true
+
+// Adding properties to 'this' in global scope
+this.globalVar = 'I am global';
+console.log(window.globalVar); // "I am global"
+console.log(globalVar);        // "I am global"
+```
+
+### Node.js Environment
+
+```javascript
+// In Node.js REPL (interactive mode)
+console.log(this === global); // true
+
+// In Node.js MODULE (file)
+console.log(this === global); // false!
+console.log(this);            // {} (empty object - module.exports)
+```
+
+### The `globalThis` - Universal Solution (ES2020)
+
+`globalThis` provides a **standard way** to access the global object across ALL environments.
+
+```javascript
+// Works everywhere: Browser, Node.js, Web Workers, etc.
+console.log(globalThis);
+
+// Browser: globalThis === window
+// Node.js: globalThis === global
+// Web Workers: globalThis === self
+
+// Practical use: Polyfills and cross-environment code
+if (typeof globalThis.fetch === 'undefined') {
+    // Polyfill fetch for environments that don't have it
+    globalThis.fetch = customFetchImplementation;
+}
+```
+
+### Analogy 🌍
+Think of `globalThis` as a **universal translator**. Just like how a universal translator helps you communicate in any country, `globalThis` helps your code access the global object in any JavaScript environment.
+
+### Key Differences Table
+
+| Environment | Global Object | `this` in Global Scope | `this` in Module |
+|-------------|---------------|------------------------|------------------|
+| Browser | `window` | `window` | `window` (script) / `undefined` (module) |
+| Node.js | `global` | `global` (REPL) | `{}` (file/module) |
+| Web Workers | `self` | `self` | `self` |
+| Universal | `globalThis` | `globalThis` | Depends on module type |
+
+### Strict Mode Effect on Global Scope
+
+```javascript
+// Global scope 'this' is NOT affected by strict mode
+"use strict";
+console.log(this === window); // true (in browser)
+
+// But function 'this' IS affected
+function showThis() {
+    "use strict";
+    console.log(this); // undefined (NOT window)
+}
+showThis();
+```
+
+---
+
+## 9️⃣ Method Borrowing (Interview Favorite!)
+
+**Method borrowing** is the technique of using a method from one object on another object using `call()`, `apply()`, or `bind()`.
+
+### Why Method Borrowing?
+
+Sometimes you have an **array-like object** (has `length` and indexed properties) but it's not a real array, so it doesn't have array methods like `join()`, `slice()`, `forEach()`, etc.
+
+### Classic Example: The `arguments` Object
+
+```javascript
+function listArguments() {
+    // 'arguments' is array-like but NOT an array
+    console.log(arguments);        // [Arguments] { '0': 'a', '1': 'b', '2': 'c' }
+    console.log(Array.isArray(arguments)); // false
+    
+    // ❌ This fails - arguments doesn't have .join()
+    // console.log(arguments.join(', ')); // TypeError!
+    
+    // ✅ Borrow the join method from Array.prototype
+    const result = [].join.call(arguments, ', ');
+    console.log(result); // "a, b, c"
+}
+
+listArguments('a', 'b', 'c');
+```
+
+### How Method Borrowing Works
+
+```javascript
+// The Array.prototype.join method internally uses 'this'
+// to access elements and length:
+
+// Simplified join implementation:
+Array.prototype.join = function(separator) {
+    let result = '';
+    for (let i = 0; i < this.length; i++) {
+        if (i > 0) result += separator;
+        result += this[i];
+    }
+    return result;
+};
+
+// When we call: [].join.call(arguments, ', ')
+// 'this' inside join becomes 'arguments'
+// So it accesses arguments[0], arguments[1], arguments.length, etc.
+```
+
+### Analogy 🔧
+Method borrowing is like **borrowing your neighbor's power drill**. You don't own the drill (the method), but you can use it on your own projects (objects) whenever needed.
+
+### Common Method Borrowing Patterns
+
+#### Pattern 1: Convert Array-Like to Array
+
+```javascript
+function example() {
+    // Method 1: Using slice
+    const args1 = Array.prototype.slice.call(arguments);
+    
+    // Method 2: Using spread (modern)
+    const args2 = [...arguments];
+    
+    // Method 3: Using Array.from (modern)
+    const args3 = Array.from(arguments);
+    
+    console.log(Array.isArray(args1)); // true
+}
+```
+
+#### Pattern 2: Using Array Methods on DOM NodeLists
+
+```javascript
+// DOM NodeList is array-like but not an array
+const divs = document.querySelectorAll('div');
+
+// ❌ This might fail in older browsers
+// divs.forEach(div => console.log(div));
+
+// ✅ Borrow forEach from Array
+Array.prototype.forEach.call(divs, function(div) {
+    console.log(div);
+});
+
+// Or use the shorter syntax
+[].forEach.call(divs, div => console.log(div));
+```
+
+#### Pattern 3: Borrowing Object Methods
+
+```javascript
+const person1 = {
+    name: 'John',
+    age: 30,
+    introduce: function() {
+        return `Hi, I'm ${this.name}, ${this.age} years old`;
+    }
+};
+
+const person2 = {
+    name: 'Jane',
+    age: 25
+    // No introduce method!
+};
+
+// Borrow introduce from person1
+console.log(person1.introduce.call(person2)); 
+// "Hi, I'm Jane, 25 years old"
+```
+
+#### Pattern 4: Math Functions with Arrays
+
+```javascript
+const numbers = [5, 6, 2, 3, 7];
+
+// Math.max doesn't accept arrays, but we can use apply
+const max = Math.max.apply(null, numbers); // 7
+const min = Math.min.apply(null, numbers); // 2
+
+// Modern alternative with spread
+const max2 = Math.max(...numbers); // 7
+```
+
+### Interview Question: Implement Your Own `bind()`
+
+```javascript
+// Polyfill for bind using call
+Function.prototype.myBind = function(context, ...boundArgs) {
+    const fn = this; // The function being bound
+    
+    return function(...args) {
+        return fn.call(context, ...boundArgs, ...args);
+    };
+};
+
+// Test it
+function greet(greeting, punctuation) {
+    return `${greeting}, ${this.name}${punctuation}`;
+}
+
+const person = { name: 'John' };
+const boundGreet = greet.myBind(person, 'Hello');
+console.log(boundGreet('!')); // "Hello, John!"
+```
+
+---
+
+## 🔟 `this` in Higher-Order Functions
+
+**Higher-Order Functions (HOFs)** are functions that either:
+1. Take a function as an argument, OR
+2. Return a function
+
+Understanding `this` in HOFs is crucial because callbacks often lose their intended `this` context.
+
+### The `thisArg` Parameter (Hidden Gem!)
+
+Many built-in HOFs like `forEach`, `map`, `filter`, `every`, `some`, `find` accept an **optional second argument** called `thisArg`:
+
+```javascript
+arr.forEach(callback, thisArg);
+arr.map(callback, thisArg);
+arr.filter(callback, thisArg);
+```
+
+### Example: Using `thisArg`
+
+```javascript
+const counter = {
+    count: 0,
+    
+    countPositive: function(numbers) {
+        // Without thisArg - 'this' would be undefined/window
+        numbers.forEach(function(num) {
+            if (num > 0) this.count++; // 'this' refers to counter!
+        }, this); // ← thisArg: passing 'this' (counter object)
+    }
+};
+
+counter.countPositive([1, -2, 3, -4, 5]);
+console.log(counter.count); // 3
+```
+
+### Comparison: Three Ways to Handle `this` in HOF Callbacks
+
+```javascript
+const calculator = {
+    multiplier: 2,
+    
+    // Method 1: Using thisArg parameter
+    doubleWithThisArg: function(numbers) {
+        return numbers.map(function(num) {
+            return num * this.multiplier;
+        }, this); // thisArg = this (calculator)
+    },
+    
+    // Method 2: Using arrow function (lexical this)
+    doubleWithArrow: function(numbers) {
+        return numbers.map(num => num * this.multiplier);
+        // Arrow function inherits 'this' from doubleWithArrow
+    },
+    
+    // Method 3: Using bind()
+    doubleWithBind: function(numbers) {
+        return numbers.map(function(num) {
+            return num * this.multiplier;
+        }.bind(this)); // Explicitly bind 'this'
+    },
+    
+    // Method 4: Store this in variable (old pattern)
+    doubleWithSelf: function(numbers) {
+        const self = this;
+        return numbers.map(function(num) {
+            return num * self.multiplier;
+        });
+    }
+};
+
+const nums = [1, 2, 3, 4, 5];
+console.log(calculator.doubleWithThisArg(nums)); // [2, 4, 6, 8, 10]
+console.log(calculator.doubleWithArrow(nums));   // [2, 4, 6, 8, 10]
+console.log(calculator.doubleWithBind(nums));    // [2, 4, 6, 8, 10]
+console.log(calculator.doubleWithSelf(nums));    // [2, 4, 6, 8, 10]
+```
+
+### `this` in Custom Higher-Order Functions
+
+When creating your own HOFs, you should also support the `thisArg` pattern:
+
+```javascript
+// Custom forEach implementation with thisArg support
+function myForEach(array, callback, thisArg) {
+    for (let i = 0; i < array.length; i++) {
+        // Use call() to set 'this' for the callback
+        callback.call(thisArg, array[i], i, array);
+    }
+}
+
+// Usage
+const logger = {
+    prefix: '>>',
+    log: function(item) {
+        console.log(`${this.prefix} ${item}`);
+    }
+};
+
+myForEach([1, 2, 3], logger.log, logger);
+// >> 1
+// >> 2
+// >> 3
+```
+
+### `this` in Decorators (Functions Returning Functions)
+
+```javascript
+// A decorator that logs function calls
+function logDecorator(fn) {
+    return function(...args) {
+        console.log(`Calling with args: ${args}`);
+        // Important: preserve 'this' using call/apply
+        const result = fn.apply(this, args);
+        console.log(`Result: ${result}`);
+        return result;
+    };
+}
+
+const calculator = {
+    value: 10,
+    add: function(num) {
+        return this.value + num;
+    }
+};
+
+// Decorate the method
+calculator.add = logDecorator(calculator.add);
+
+console.log(calculator.add(5));
+// Calling with args: 5
+// Result: 15
+// 15
+```
+
+### Analogy 🎭
+Higher-order functions are like **theater directors**. The director (HOF) tells the actors (callbacks) what to do, but the actors need to know which stage (context/`this`) they're performing on. The `thisArg` is like giving each actor a backstage pass to the correct theater.
+
+### Common Pitfall: Losing `this` in reduce()
+
+```javascript
+const stats = {
+    total: 0,
+    
+    // ❌ Wrong - 'this' is lost in reduce callback
+    sumWrong: function(numbers) {
+        return numbers.reduce(function(acc, num) {
+            this.total += num; // TypeError: Cannot read 'total' of undefined
+            return acc + num;
+        }, 0);
+    },
+    
+    // ✅ Correct - use arrow function
+    sumCorrect: function(numbers) {
+        return numbers.reduce((acc, num) => {
+            this.total += num; // Works! 'this' is stats
+            return acc + num;
+        }, 0);
+    }
+};
+```
+
+> **Note:** `reduce()` does NOT have a `thisArg` parameter! Always use arrow functions or `bind()` with `reduce()`.
+
+### Quick Reference: HOFs with `thisArg` Support
+
+| Method | Has `thisArg`? | Signature |
+|--------|----------------|-----------|
+| `forEach` | ✅ Yes | `arr.forEach(callback, thisArg)` |
+| `map` | ✅ Yes | `arr.map(callback, thisArg)` |
+| `filter` | ✅ Yes | `arr.filter(callback, thisArg)` |
+| `find` | ✅ Yes | `arr.find(callback, thisArg)` |
+| `findIndex` | ✅ Yes | `arr.findIndex(callback, thisArg)` |
+| `every` | ✅ Yes | `arr.every(callback, thisArg)` |
+| `some` | ✅ Yes | `arr.some(callback, thisArg)` |
+| `reduce` | ❌ No | `arr.reduce(callback, initialValue)` |
+| `reduceRight` | ❌ No | `arr.reduceRight(callback, initialValue)` |
+| `sort` | ❌ No | `arr.sort(compareFn)` |
+
+---
+
+## 1️⃣1️⃣ Where `this` Does NOT Point as Expected (Common Pitfalls)
 
 ### ❌ Pitfall 1: Extracting Methods from Objects
 
@@ -629,7 +1034,7 @@ getValue: function() {
 
 ---
 
-## 9️⃣ `this` Does NOT Exist in These Contexts
+## 1️⃣2️⃣ `this` Does NOT Exist in These Contexts
 
 ### Variable Environment Access
 
@@ -675,7 +1080,7 @@ const person = {
 
 ---
 
-## 🎯 Interview Questions & Answers
+## 🎯 Interview Questions & Answers (Extended)
 
 ### Q1: What is `this` in JavaScript?
 **A:** `this` is a keyword (not a variable) that refers to the object that is executing the current function. Its value is determined at runtime based on how the function is invoked, not where it's defined.
@@ -735,35 +1140,106 @@ increment: function() {
 }
 ```
 
+### Q7: What is Method Borrowing? Give an example.
+**A:** Method borrowing is using a method from one object on another object using `call()`, `apply()`, or `bind()`. Classic example:
+```javascript
+function listArgs() {
+    // 'arguments' is array-like but not an array
+    // Borrow Array's join method
+    return [].join.call(arguments, '-');
+}
+listArgs('a', 'b', 'c'); // "a-b-c"
+```
+
+### Q8: What is `globalThis` and why was it introduced?
+**A:** `globalThis` (ES2020) provides a universal way to access the global object across all JavaScript environments. Before `globalThis`:
+- Browser: `window`
+- Node.js: `global`
+- Web Workers: `self`
+
+`globalThis` works everywhere, making cross-environment code simpler.
+
+### Q9: What is `thisArg` in array methods like `forEach`?
+**A:** `thisArg` is an optional second parameter that sets the `this` value inside the callback:
+```javascript
+const obj = { multiplier: 2 };
+[1, 2, 3].forEach(function(num) {
+    console.log(num * this.multiplier);
+}, obj); // obj is thisArg
+// Output: 2, 4, 6
+```
+
+### Q10: Output-based - Method Borrowing
+```javascript
+const arr = [1, 2, 3];
+const obj = { 0: 'a', 1: 'b', 2: 'c', length: 3 };
+
+console.log(Array.prototype.join.call(obj, '-')); // ?
+console.log([].slice.call(obj)); // ?
+```
+**A:**
+- First: `"a-b-c"` (join works on array-like objects)
+- Second: `['a', 'b', 'c']` (converts array-like to real array)
+
+### Q11: Why does `reduce()` not have a `thisArg` parameter?
+**A:** `reduce()` was designed with a different callback signature `(accumulator, currentValue, index, array)` and focuses on accumulation. To preserve `this` in reduce callbacks, use arrow functions or `bind()`:
+```javascript
+numbers.reduce((acc, num) => acc + num * this.multiplier, 0);
+```
+
+### Q12: Implement a simple `bind()` polyfill
+**A:**
+```javascript
+Function.prototype.myBind = function(context, ...boundArgs) {
+    const fn = this;
+    return function(...args) {
+        return fn.apply(context, [...boundArgs, ...args]);
+    };
+};
+```
+
 ---
 
 ## 📝 Summary Cheatsheet
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    THE 'this' KEYWORD                       │
-├─────────────────────────────────────────────────────────────┤
-│ RULE 1: Method call → 'this' = the object                  │
-│         obj.method() → this === obj                         │
-│                                                             │
-│ RULE 2: Simple function → 'this' = window/undefined        │
-│         function() → this === window (sloppy)               │
-│         function() → this === undefined (strict)            │
-│                                                             │
-│ RULE 3: Arrow function → 'this' = lexical parent           │
-│         () => {} → this === surrounding scope's this        │
-│                                                             │
-│ RULE 4: Event listener → 'this' = DOM element              │
-│         element.addEventListener(...) → this === element    │
-│                                                             │
-│ RULE 5: new keyword → 'this' = new object                  │
-│         new Constructor() → this === {}                     │
-│                                                             │
-│ RULE 6: call/apply/bind → 'this' = specified object        │
-│         fn.call(obj) → this === obj                         │
-├─────────────────────────────────────────────────────────────┤
-│ PRECEDENCE: bind > call/apply > method > default           │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────┐
+│                    THE 'this' KEYWORD - COMPLETE GUIDE              │
+├─────────────────────────────────────────────────────────────────────┤
+│ RULE 1: Global scope → 'this' = global object                       │
+│         In browser: this === window                                  │
+│         In Node.js module: this === {} (module.exports)             │
+│         Universal: globalThis (ES2020)                              │
+│                                                                     │
+│ RULE 2: Method call → 'this' = the object                          │
+│         obj.method() → this === obj                                  │
+│                                                                     │
+│ RULE 3: Simple function → 'this' = window/undefined                 │
+│         function() → this === window (sloppy)                        │
+│         function() → this === undefined (strict)                     │
+│                                                                     │
+│ RULE 4: Arrow function → 'this' = lexical parent                    │
+│         () => {} → this === surrounding scope's this                 │
+│                                                                     │
+│ RULE 5: Event listener → 'this' = DOM element                       │
+│         element.addEventListener(...) → this === element             │
+│                                                                     │
+│ RULE 6: new keyword → 'this' = new object                           │
+│         new Constructor() → this === {}                              │
+│                                                                     │
+│ RULE 7: call/apply/bind → 'this' = specified object                 │
+│         fn.call(obj) → this === obj                                  │
+│                                                                     │
+│ RULE 8: HOF callbacks → 'this' = thisArg (if provided)              │
+│         arr.forEach(cb, thisArg) → this === thisArg in cb           │
+├─────────────────────────────────────────────────────────────────────┤
+│ METHOD BORROWING:                                                   │
+│   [].join.call(arrayLike, ',')    // Borrow Array methods           │
+│   Array.prototype.slice.call(obj) // Convert to array               │
+│   fn.apply(obj, args)             // Borrow with array args         │
+├─────────────────────────────────────────────────────────────────────┤
+│ PRECEDENCE: bind > call/apply > method > default                    │
+└─────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -771,9 +1247,11 @@ increment: function() {
 ## 🔗 References
 
 - [MDN - this](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Operators/this)
+- [MDN - globalThis](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/globalThis)
+- [MDN - Function.prototype.call()](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Function/call)
+- [JavaScript.info - Decorators and forwarding, call/apply](https://javascript.info/call-apply-decorators)
 - [freeCodeCamp - How to Use the "this" Keyword](https://www.freecodecamp.org/news/the-this-keyword-in-javascript/)
-- [W3Schools - JavaScript this](https://www.w3schools.com/js/js_this.asp)
-- [JavaScript.info - Object Methods](https://javascript.info/object-methods)
+- [Dmitri Pavlutin - Gentle Explanation of "this"](https://dmitripavlutin.com/gentle-explanation-of-this-in-javascript/)
 
 ---
 
