@@ -20,3 +20,4 @@ const booking = function(flightName = 'es525', passengerNumbers = 25, price){
 }
 
 booking(undefined, undefined, 45);
+booking(undefined,34, undefined);
