@@ -261,6 +261,56 @@ console.log(myFn.version); // "1.0" ← original function object was mutated
 
 ---
 
+## 3.5 The Autoboxing Trap — Why Primitives Appear to Have Methods
+
+From MDN: *"Primitives have no methods but still behave as if they do. When properties are accessed on primitives, JavaScript **auto-boxes** the value into a wrapper object and accesses the property on that object instead."*
+
+### What Is Autoboxing?
+
+When you write `"hello".toUpperCase()`, the string primitive `"hello"` has no methods. JavaScript silently:
+1. Wraps it in a temporary `String` wrapper object
+2. Calls `.toUpperCase()` on that wrapper
+3. Discards the wrapper — your original primitive is unchanged
+
+```js
+let str = "hello";
+console.log(str.toUpperCase()); // "HELLO" ← autoboxed to String object
+console.log(str);               // "hello" ← still the original primitive
+
+// Demonstrating the wrapper is ephemeral (discarded immediately)
+str.customProp = "test";        // autoboxes, adds prop to TEMP wrapper
+console.log(str.customProp);    // undefined ← wrapper was thrown away!
+```
+
+### The Primitive Wrapper Types Table (MDN)
+
+| Primitive Type | `typeof` result | Wrapper Object |
+|---|---|---|
+| `null` | `"object"` ⚠️ | N/A |
+| `undefined` | `"undefined"` | N/A |
+| `boolean` | `"boolean"` | `Boolean` |
+| `number` | `"number"` | `Number` |
+| `bigint` | `"bigint"` | `BigInt` |
+| `string` | `"string"` | `String` |
+| `symbol` | `"symbol"` | `Symbol` |
+
+> **Why this matters for passing arguments:** When you pass a string to a function and call `.toUpperCase()` inside, you are calling it on a temporary wrapper object. The original string variable is STILL immutable — no mutation is happening, even though it looks like method calls are modifying it.
+
+```js
+function shout(msg) {
+  msg = msg.toUpperCase(); // creates a NEW string, reassigns local copy
+  console.log(msg);        // "HELLO"
+}
+
+let greeting = "hello";
+shout(greeting);
+console.log(greeting); // "hello" — primitives are immutable, new string was created
+```
+
+> **Interview gotcha:** `typeof null === 'object'` is a historical bug in JS (from the original 1995 implementation). `null` is a primitive, not an object — but it passes the object identity check. Always use `=== null` to test for null.
+
+---
+
 ## 4. The Deep Truth: JS Is ALWAYS "Pass by Value"
 
 This is the **#1 misconception** about JavaScript. Let's be precise:
@@ -305,6 +355,75 @@ function test(primitive, object) {
 test(a, obj);
 console.log(a);     // 1         ← not 999, so NOT pass-by-ref for primitives
 console.log(obj.x); // 1         ← not 999, so NOT true pass-by-ref for objects either
+```
+
+---
+
+## 4.5 The `arguments` Object — The Silent Sync Trap
+
+Every non-arrow function has a built-in `arguments` array-like object. It creates a subtle interaction with pass-by-value that trips up many developers in interviews.
+
+### `arguments` Is Synchronized With Parameters (Non-Strict Mode Only!)
+
+MDN confirmed: in **non-strict** functions with **simple parameters** (no rest/default/destructuring), modifying `arguments[i]` **also updates the named parameter**, and vice versa.
+
+```js
+// NON-STRICT + SIMPLE PARAMS → bidirectional sync (the surprise!)
+function sneakySync(a, b) {
+  arguments[0] = 999;     // ← updates `a` too!
+  console.log(a);         // 999 ← NOT 10! arguments synced!
+  
+  a = 777;                // ← also updates arguments[0]
+  console.log(arguments[0]); // 777
+}
+sneakySync(10, 20);
+```
+
+```js
+// NON-STRICT + DEFAULT PARAMS → sync is BROKEN
+function noSync(a = 55) {
+  arguments[0] = 999;     // does NOT update `a`
+  console.log(a);         // 10 ← original value preserved
+}
+noSync(10);
+```
+
+```js
+// STRICT MODE → arguments never syncs (always safe)
+function strictMode(a) {
+  "use strict";
+  arguments[0] = 999;     // does NOT update `a`
+  console.log(a);         // 10 ← safe
+}
+strictMode(10);
+```
+
+> **The fix:** Always use `"use strict"` OR use **rest parameters** (`...args`) instead of `arguments`. Rest parameters are a real `Array` (not array-like) and are never synchronized.
+
+### `arguments` vs Rest Parameters
+
+| Feature | `arguments` object | Rest parameters (`...args`) |
+|---|---|---|
+| Type | Array-like object | Real `Array` instance |
+| Array methods | ❌ Must convert first | ✅ `.map()`, `.sort()`, `.filter()` etc. |
+| Syncs with params | ⚠️ Yes (non-strict, simple) | ❌ No |
+| Arrow functions | ❌ Not available | ✅ Available |
+| Modern preference | ❌ Deprecated for new code | ✅ Recommended |
+| `callee` property | ✅ (deprecated) | ❌ Not applicable |
+
+```js
+// arguments — old pattern (avoid in new code)
+function oldSum() {
+  const args = Array.prototype.slice.call(arguments); // need to convert!
+  return args.reduce((a, b) => a + b, 0);
+}
+
+// rest parameters — modern pattern
+function newSum(...nums) {
+  return nums.reduce((a, b) => a + b, 0); // it's already a real Array!
+}
+
+newSum(1, 2, 3, 4); // 10
 ```
 
 ---
@@ -368,6 +487,120 @@ const jsonCopy = JSON.parse(JSON.stringify(user));
 | `structuredClone(obj)` | ✅ deep | ❌ stripped | ✅ proper Date | 🔶 moderate |
 | `JSON.parse(JSON.stringify(obj))` | ✅ deep | ❌ stripped | ❌ becomes string | 🔶 moderate |
 | `_.cloneDeep(obj)` | ✅ deep | ✅ kept | ✅ proper Date | 🔴 slowest |
+
+### `structuredClone` Supports Circular References (ES2022+)
+
+Unlike JSON round-trip, `structuredClone` handles objects that reference themselves:
+
+```js
+const original = { name: "MDN" };
+original.itself = original; // circular reference
+
+// JSON would throw: "Converting circular structure to JSON"
+// structuredClone handles it:
+const clone = structuredClone(original);
+
+console.assert(clone !== original);        // different objects ✅
+console.assert(clone.name === "MDN");      // same values ✅
+console.assert(clone.itself === clone);    // circular ref preserved ✅
+```
+
+**Browser support:** Chrome 98+, Firefox 94+, Safari 15.4+, Node.js 17+ (ES2022).
+
+---
+
+### Object Integrity Levels — Beyond Cloning
+
+When you want to make objects safe to pass without copying, use JS's built-in integrity levels. MDN describes these as "the highest integrity levels JavaScript provides".
+
+```
+Object Integrity Levels (from weakest to strongest):
+┌──────────────────────────────────────────────────────────────────┐
+│  Level                │ Add props? │ Delete props? │ Edit values? │
+├───────────────────────┼────────────┼───────────────┼──────────────┤
+│  Normal object        │ ✅         │ ✅            │ ✅           │
+│  preventExtensions()  │ ❌         │ ✅            │ ✅           │
+│  seal()               │ ❌         │ ❌            │ ✅           │
+│  freeze()             │ ❌         │ ❌            │ ❌  (shallow) │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+```js
+// Object.seal() — can edit existing props, cannot add/delete
+const config = Object.seal({ timeout: 3000, retries: 3 });
+config.timeout = 5000;    // ✅ editing allowed
+config.newProp = "hi";    // ❌ silently ignored (throws in strict mode)
+delete config.retries;    // ❌ silently ignored (throws in strict mode)
+console.log(config);      // { timeout: 5000, retries: 3 }
+
+// Object.freeze() — NOTHING can change (highest integrity)
+const settings = Object.freeze({ debug: false, version: "1.0" });
+settings.debug = true;    // ❌ silently ignored in non-strict mode
+                          // ❌ throws TypeError in strict mode
+console.log(settings.debug); // false ← unchanged
+```
+
+> **Critical gotcha: `Object.freeze()` is SHALLOW!** Nested objects are NOT frozen.
+
+```js
+const employee = Object.freeze({
+  name: "Alice",
+  address: { city: "NYC" }, // nested object is NOT frozen!
+});
+
+employee.name = "Bob";           // ❌ blocked by freeze
+employee.address.city = "LA";   // ✅ succeeds! address is a separate heap object
+
+console.log(employee.name);          // "Alice" ← protected
+console.log(employee.address.city);  // "LA"    ← NOT protected!
+```
+
+### Deep Freeze Pattern (from MDN)
+
+```js
+function deepFreeze(object) {
+  // Freeze all nested properties first
+  for (const name of Reflect.ownKeys(object)) {
+    const value = object[name];
+    if ((value && typeof value === "object") || typeof value === "function") {
+      deepFreeze(value); // recurse
+    }
+  }
+  return Object.freeze(object);
+}
+
+const config = deepFreeze({
+  server: { host: "localhost", port: 3000 },
+  debug: false,
+});
+
+config.server.port = 9999; // ❌ throws TypeError in strict mode
+config.debug = true;        // ❌ throws TypeError in strict mode
+```
+
+> ⚠️ **Warning (from MDN):** Regular `function` declarations have a circular reference via `.prototype.constructor`, so `deepFreeze` can hit infinite recursion on them. Arrow functions are safe to deep freeze.
+
+---
+
+### Garbage Collection — What Happens to the Orphaned Object?
+
+When a function reassigns an object parameter, it creates a "orphaned" heap object. The **mark-and-sweep** garbage collector (used by all modern JS engines) will eventually reclaim it.
+
+```js
+const myCar = { brand: "Toyota" }; // myCar → 0xF4A1 on heap
+
+function replaceCar(car) {
+  car = { brand: "BMW" }; // creates 0xB9D3 on heap
+  // After function returns: 0xB9D3 has no references pointing to it
+  // → Mark-and-sweep will collect it on next GC cycle
+}
+
+replaceCar(myCar);
+// 0xB9D3 ({ brand: "BMW" }) is now unreachable — eligible for GC
+// 0xF4A1 ({ brand: "Toyota" }) is still referenced by myCar → safe
+```
+
+The GC starts from **roots** (global object, active call stack) and marks everything reachable. Objects with zero reachable references are swept. This is why silent reassignment inside functions doesn't cause memory leaks — the orphaned object is naturally reclaimed.
 
 ---
 
@@ -440,6 +673,57 @@ console.log(obj.value); // ?
 
 ---
 
+### Q7 (The Sync Trap): "What does this output?"
+
+```js
+function tricky(a) {
+  arguments[0] = 999;
+  console.log(a);
+}
+tricky(10); // ?
+```
+
+> **Answer:** `999` — In **non-strict mode** with **simple parameters**, `arguments[i]` is **bidirectionally synchronized** with the named parameter. Modifying `arguments[0]` ALSO changes `a`. This does NOT happen with default/rest/destructured params, or in strict mode. Modern code should use `"use strict"` or rest params to avoid this.
+
+---
+
+### Q8 (Freeze Gotcha): "Is the nested city protected?"
+
+```js
+const company = Object.freeze({
+  name: "Acme",
+  address: { city: "New York" },
+});
+
+function relocate(org) {
+  org.name = "New Acme";           // attempt 1
+  org.address.city = "London";    // attempt 2
+}
+
+relocate(company);
+console.log(company.name);          // ?
+console.log(company.address.city);  // ?
+```
+
+> **Answer:**
+> - `company.name` → `"Acme"` — `Object.freeze()` blocked the top-level mutation.
+> - `company.address.city` → `"London"` — **`freeze()` is shallow!** The `address` object is a separate heap object and was NOT frozen. Mutation of nested objects succeeds.
+> - **Fix:** Use `deepFreeze()` or `structuredClone()` + `Object.freeze()` on the result.
+
+---
+
+### Q9 (autoboxing): "Why does this silently fail?"
+
+```js
+let str = "hello";
+str.myProp = "world"; // no error?!
+console.log(str.myProp); // ?
+```
+
+> **Answer:** `undefined` — When you do `str.myProp = "world"`, JS autoboxes `str` to a **temporary** `String` wrapper object, sets `.myProp` on that wrapper, then immediately discards it. The original `str` primitive is unchanged and immutable. Next access to `str.myProp` creates a NEW temporary wrapper (which has no `.myProp`), so you get `undefined`.
+
+---
+
 ## 🔑 Key Takeaways Cheatsheet
 
 ```
@@ -473,10 +757,52 @@ console.log(obj.value); // ?
 
 ---
 
+## 6. Bonus: TypeScript `readonly` and Immutable Parameter Types
+
+TypeScript gives you compile-time enforcement of the patterns above. Understanding `readonly` is a major plus in interviews at companies using TypeScript.
+
+```typescript
+// readonly prevents property mutation at compile time
+interface Car {
+  readonly brand: string;
+  model: string;
+}
+
+function updateCar(car: Car) {
+  car.model = "Tesla";    // ✅ model is mutable
+  car.brand = "BMW";      // ❌ TypeScript error: Cannot assign to 'brand'
+                          //    because it is a read-only property
+}
+
+// Readonly<T> utility type — makes ALL properties readonly
+function displayUser(user: Readonly<{ name: string; age: number }>) {
+  user.name = "Bob"; // ❌ TypeScript error at compile time!
+}
+```
+
+```typescript
+// ReadonlyArray<T> prevents array mutation
+function processItems(items: ReadonlyArray<string>) {
+  items.push("new item"); // ❌ TypeScript error
+  items[0] = "changed";  // ❌ TypeScript error
+  console.log(items[0]); // ✅ reading is fine
+}
+```
+
+> **Note:** `readonly` and `Readonly<T>` are **compile-time only** — they compile away to plain JS. At runtime, the object is still mutable unless you also use `Object.freeze()`. Use both together for bulletproof immutability.
+
+---
+
 ## 📚 Further Reading
 
 - MDN: [Primitive](https://developer.mozilla.org/en-US/docs/Glossary/Primitive) | [Object](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object)
 - MDN: [`structuredClone()`](https://developer.mozilla.org/en-US/docs/Web/API/structuredClone)
+- MDN: [`Object.freeze()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/freeze)
+- MDN: [`Object.seal()`](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/seal)
+- MDN: [The `arguments` object](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/arguments)
+- MDN: [Rest parameters](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Functions/rest_parameters)
+- MDN: [JavaScript data types and data structures](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Data_structures)
+- MDN: [Memory management (Mark-and-sweep GC)](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Memory_management)
 - ECMAScript Spec: [Pass by value (12.3.4 Argument Lists)](https://tc39.es/ecma262/#sec-argument-lists)
 - Barbara Liskov, "Call by sharing" — CLU language design, 1974
 
