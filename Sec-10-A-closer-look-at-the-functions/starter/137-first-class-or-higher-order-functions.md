@@ -33,9 +33,14 @@
    - 8.7 IIFE — Functions as Immediately-Used Values
    - 8.8 `pipe` — Left-to-Right Composition
    - 8.9 Express Middleware — HOF in the Wild
+   - 8.10 Debounce — Interview Classic HOF
+   - 8.11 Throttle — Interview Classic HOF
+   - 8.12 Building Custom Array HOFs (filter, find, some, every)
 9. [Common Pitfalls & Gotchas](#9-common-pitfalls)
 10. [Interview Q&A](#10-interview-qa)
-11. [Cheat Sheet](#11-cheat-sheet)
+11. [Code Tracing Exercise](#11-code-tracing)
+12. [Event Loop & Callbacks — How Async HOFs Work](#12-event-loop)
+13. [Cheat Sheet](#13-cheat-sheet)
 
 ---
 
@@ -1003,6 +1008,320 @@ app.get("/users", asyncHandler(async (req, res) => {
 
 ---
 
+### 8.10 — Debounce — Interview Classic HOF 🔥
+
+**Debounce** is one of the most frequently asked HOF interview questions. It's a function that *delays* the execution of another function until a certain amount of time has passed *without the function being called again*.
+
+> **Analogy: The Elevator Door**
+> Imagine an elevator door that waits for people to stop entering before closing. Every time someone walks in, the door resets its "closing timer." The door only closes when no one has entered for, say, 3 seconds. This is debouncing — you wait until the *activity stops* for a period before executing.
+
+**When to use debounce:**
+- Search input fields (wait until user stops typing before making API call)
+- Window resize events (wait until resizing stops before recalculating layout)
+- Form auto-save (wait until user stops editing before saving)
+- Scroll event for infinite scroll (but throttle is often better here)
+
+```js
+// debounce is a HOF: receives fn, returns fn (with delayed execution)
+function debounce(fn, delay) {
+  let timeoutId = null; // Closure! This persists across calls
+
+  return function (...args) {
+    // Clear any existing timer — this "resets the elevator door timer"
+    clearTimeout(timeoutId);
+
+    // Set a new timer — fn will only run if no new calls come within 'delay' ms
+    timeoutId = setTimeout(() => {
+      fn.apply(this, args); // Preserve 'this' and pass all arguments
+    }, delay);
+  };
+}
+
+// Usage: search input
+const searchAPI = (query) => {
+  console.log(`🔍 Searching for: "${query}"`);
+  // In reality: fetch(`/api/search?q=${query}`)
+};
+
+const debouncedSearch = debounce(searchAPI, 300); // 300ms debounce
+
+// Simulate user typing "hello" quickly
+debouncedSearch("h");      // timer starts
+debouncedSearch("he");     // timer RESETS
+debouncedSearch("hel");    // timer RESETS
+debouncedSearch("hell");   // timer RESETS
+debouncedSearch("hello");  // timer RESETS
+
+// After 300ms of no calls: "🔍 Searching for: "hello"" — only ONCE!
+
+// In a real input handler:
+// inputElement.addEventListener('input', (e) => debouncedSearch(e.target.value));
+```
+
+**Step-by-step execution visualization:**
+
+```
+Time:   0ms   50ms  100ms  150ms  200ms  250ms  300ms  350ms  400ms  500ms
+        │      │      │      │      │      │      │      │      │      │
+Call:   "h"   "he"  "hel" "hell""hello"                                
+        │      │      │      │      │      │      │      │      │      │
+Timer:  ──▶╳   ──▶╳  ──▶╳  ──▶╳   ──────────────────▶ 🎯 API call!
+        set   clear  clear clear  set
+        reset reset  reset reset  (no more calls for 300ms)
+
+Only ONE API call is made — after the user stops typing!
+```
+
+**Advanced debounce with leading/trailing options (Lodash-style):**
+
+```js
+function debounce(fn, delay, options = {}) {
+  let timeoutId = null;
+  const { leading = false, trailing = true } = options;
+
+  return function (...args) {
+    const isFirstCall = timeoutId === null;
+
+    clearTimeout(timeoutId);
+
+    // Leading edge: call immediately on first call (if enabled)
+    if (leading && isFirstCall) {
+      fn.apply(this, args);
+    }
+
+    timeoutId = setTimeout(() => {
+      // Trailing edge: call at the end (if enabled)
+      if (trailing && !isFirstCall) {
+        fn.apply(this, args);
+      }
+      timeoutId = null; // Reset for next sequence
+    }, delay);
+  };
+}
+
+// Usage:
+// { leading: true }  — call immediately, ignore subsequent calls within delay
+// { trailing: true } — call after delay (default behavior)
+// { leading: true, trailing: true } — call at start AND end
+```
+
+---
+
+### 8.11 — Throttle — Interview Classic HOF 🔥
+
+**Throttle** ensures a function is called *at most once* within a specified time period, no matter how many times it's invoked.
+
+> **Analogy: Traffic Light / Rate Limiter**
+> A traffic light lets cars through at a fixed rate — one batch every X seconds. No matter how many cars queue up, they pass at a controlled rate. This is throttling — you execute at a *steady rate*, not after activity stops.
+
+> **Analogy 2: Fire Alarm**
+> A fire alarm can only be triggered once per minute. Even if smoke keeps coming, the alarm won't sound again until the minute is up. Throttle says "you can only run me X times per second."
+
+**When to use throttle:**
+- Scroll event handling (run at most every 100ms while scrolling)
+- Mouse move events (update position at most every 50ms)
+- API rate limiting (max 10 requests per second)
+- Button click spam prevention (ignore rapid clicks)
+- Game loops (cap FPS)
+
+```js
+// throttle is a HOF: receives fn, returns fn (with rate-limited execution)
+function throttle(fn, limit) {
+  let lastCallTime = 0; // Closure! Tracks when fn was last called
+
+  return function (...args) {
+    const now = Date.now();
+
+    // Only execute if enough time has passed since last execution
+    if (now - lastCallTime >= limit) {
+      lastCallTime = now;
+      fn.apply(this, args);
+    }
+    // Otherwise, silently ignore the call (or queue it — see advanced version)
+  };
+}
+
+// Usage: scroll handler
+const handleScroll = () => {
+  console.log(`📜 Scroll position: ${window.scrollY}px`);
+  // In reality: complex calculations, animations, or API calls
+};
+
+const throttledScroll = throttle(handleScroll, 100); // Max once every 100ms
+
+window.addEventListener("scroll", throttledScroll);
+
+// During rapid scrolling, handleScroll runs at most every 100ms — not on every pixel!
+```
+
+**Step-by-step execution visualization:**
+
+```
+Time:   0ms   20ms  40ms  60ms  80ms  100ms 120ms 140ms 160ms 180ms 200ms
+        │      │      │     │     │      │      │      │      │      │
+Calls:  ×      ×      ×     ×     ×      ×      ×      ×      ×      ×
+        │      │      │     │     │      │      │      │      │      │
+Exec:   🎯     ─      ─     ─     ─      🎯     ─      ─      ─      ─
+        ▲                                ▲
+        First call executes              Next allowed execution (100ms later)
+
+Even with 10 scroll events, only 2 actual executions!
+```
+
+**Debounce vs Throttle — The Key Difference:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      DEBOUNCE vs THROTTLE                               │
+├───────────────────┬─────────────────────────────────────────────────────┤
+│ Debounce          │ "Wait until the storm passes"                       │
+│                   │ Executes ONCE after activity stops for X ms         │
+│                   │ Use: search input, resize, form auto-save          │
+├───────────────────┼─────────────────────────────────────────────────────┤
+│ Throttle          │ "Allow at a steady rate"                            │
+│                   │ Executes at MOST once every X ms (rate limiter)     │
+│                   │ Use: scroll, mousemove, API rate limits, FPS cap   │
+└───────────────────┴─────────────────────────────────────────────────────┘
+
+Visual comparison (10 rapid calls over 300ms, delay/limit = 100ms):
+
+         Time:  0    50   100  150  200  250  300  350  400  450  500
+         Calls: ×    ×     ×    ×    ×    ×    ×    ×    ×    ×
+                │    │     │    │    │    │    │    │    │    │
+Debounce exec: ───────────────────────────────────────────────▶ 🎯 (1 call at end)
+Throttle exec: 🎯─────────🎯─────────🎯─────────🎯─────────🎯 (5 calls, evenly spaced)
+```
+
+---
+
+### 8.12 — Building Custom Array HOFs (filter, find, some, every)
+
+Interviewers love to ask: *"Implement `filter` (or `map`) from scratch."* This proves you understand HOFs at a fundamental level.
+
+#### Implement `filter` from Scratch
+
+```js
+// Native: [1,2,3,4,5].filter(x => x > 2)  →  [3, 4, 5]
+
+function myFilter(array, predicateFn) {
+  //                   ↑ callback that returns true/false
+  const result = [];
+
+  for (let i = 0; i < array.length; i++) {
+    // Call the predicate with same signature as native filter: (element, index, array)
+    if (predicateFn(array[i], i, array)) {
+      result.push(array[i]); // Keep element if predicate returns truthy
+    }
+  }
+
+  return result;
+}
+
+// Test
+const nums = [1, 2, 3, 4, 5, 6];
+console.log(myFilter(nums, (x) => x % 2 === 0));     // [2, 4, 6]
+console.log(myFilter(nums, (x, i) => i < 3));         // [1, 2, 3]
+console.log(myFilter(nums, (x) => x > 10));           // []
+```
+
+#### Implement `find` from Scratch
+
+```js
+// Native: [1,2,3,4,5].find(x => x > 3)  →  4 (first match)
+
+function myFind(array, predicateFn) {
+  for (let i = 0; i < array.length; i++) {
+    if (predicateFn(array[i], i, array)) {
+      return array[i]; // Return FIRST match immediately
+    }
+  }
+  return undefined; // No match found
+}
+
+// Test
+const users = [
+  { name: "Alice", age: 25 },
+  { name: "Bob", age: 30 },
+  { name: "Charlie", age: 35 },
+];
+
+console.log(myFind(users, (u) => u.age > 28));       // { name: "Bob", age: 30 }
+console.log(myFind(users, (u) => u.name === "Dave")); // undefined
+```
+
+#### Implement `some` from Scratch
+
+```js
+// Native: [1,2,3].some(x => x > 2)  →  true (at least one matches)
+
+function mySome(array, predicateFn) {
+  for (let i = 0; i < array.length; i++) {
+    if (predicateFn(array[i], i, array)) {
+      return true; // Found at least one match — short-circuit
+    }
+  }
+  return false; // No matches found
+}
+
+// Test
+console.log(mySome([1, 2, 3], (x) => x > 2));   // true
+console.log(mySome([1, 2, 3], (x) => x > 10));  // false
+console.log(mySome([], (x) => x > 0));           // false (empty array → false)
+```
+
+#### Implement `every` from Scratch
+
+```js
+// Native: [1,2,3].every(x => x > 0)  →  true (ALL must match)
+
+function myEvery(array, predicateFn) {
+  for (let i = 0; i < array.length; i++) {
+    if (!predicateFn(array[i], i, array)) {
+      return false; // Found one that DOESN'T match — short-circuit
+    }
+  }
+  return true; // All matched (or array was empty → vacuously true)
+}
+
+// Test
+console.log(myEvery([1, 2, 3], (x) => x > 0));   // true
+console.log(myEvery([1, 2, 3], (x) => x > 2));   // false
+console.log(myEvery([], (x) => x > 0));           // true (empty array → true, vacuous truth)
+```
+
+#### Implement `reduce` from Scratch (Bonus)
+
+```js
+// Native: [1,2,3].reduce((acc, x) => acc + x, 0)  →  6
+
+function myReduce(array, reducerFn, initialValue) {
+  let accumulator = initialValue;
+  let startIndex = 0;
+
+  // If no initial value provided, use first element as accumulator
+  if (accumulator === undefined) {
+    if (array.length === 0) {
+      throw new TypeError("Reduce of empty array with no initial value");
+    }
+    accumulator = array[0];
+    startIndex = 1;
+  }
+
+  for (let i = startIndex; i < array.length; i++) {
+    accumulator = reducerFn(accumulator, array[i], i, array);
+  }
+
+  return accumulator;
+}
+
+// Test
+console.log(myReduce([1, 2, 3, 4], (acc, x) => acc + x, 0));     // 10
+console.log(myReduce([1, 2, 3, 4], (acc, x) => acc * x, 1));     // 24
+console.log(myReduce(["a", "b", "c"], (acc, x) => acc + x, "")); // "abc"
+```
+
+---
+
 ## 9. Common Pitfalls & Gotchas
 
 A quick-reference of the mistakes that trip up developers in interviews and production code:
@@ -1261,7 +1580,404 @@ console.log(nums.sort((a, b) => b - a)); // [21, 10, 2, 1]  ✅ descending
 
 ---
 
-## 11. Cheat Sheet
+### Q14: What is the difference between debounce and throttle? When would you use each?
+> **A:**
+> - **Debounce**: Delays execution until a *quiet period* — waits for activity to stop for X ms before executing. Use for: search inputs (wait until user stops typing), window resize handlers, form auto-save.
+> - **Throttle**: Limits execution to *at most once* every X ms — maintains a steady rate. Use for: scroll events, mouse move tracking, API rate limiting.
+>
+> **Memory trick:**
+> - Debounce = "Don't bug me until things calm down" (waits for silence)
+> - Throttle = "I'll only respond at a steady pace" (rate limiter)
+>
+> ```js
+> // Debounce: Only ONE call after 300ms of no activity
+> const debouncedSearch = debounce(search, 300);
+> // User types: h-e-l-l-o → waits 300ms → ONE search("hello")
+>
+> // Throttle: Calls every 100ms during activity
+> const throttledScroll = throttle(updateUI, 100);
+> // User scrolls continuously → updates every 100ms (steady rate)
+> ```
+
+---
+
+### Q15: Implement `filter` from scratch. Walk through how it works.
+> **A:**
+> ```js
+> function myFilter(array, predicateFn) {
+>   const result = [];
+>   for (let i = 0; i < array.length; i++) {
+>     if (predicateFn(array[i], i, array)) {
+>       result.push(array[i]);
+>     }
+>   }
+>   return result;
+> }
+>
+> // How it works:
+> // 1. myFilter receives an array and a callback (predicate)
+> // 2. It loops through each element
+> // 3. For each element, it calls the predicate with (element, index, array)
+> // 4. If predicate returns truthy, element is included in result
+> // 5. Returns new array with only matching elements
+>
+> // Example trace:
+> myFilter([1, 2, 3, 4], x => x % 2 === 0);
+> // i=0: predicateFn(1) → false → skip
+> // i=1: predicateFn(2) → true  → push 2
+> // i=2: predicateFn(3) → false → skip
+> // i=3: predicateFn(4) → true  → push 4
+> // Result: [2, 4]
+> ```
+
+---
+
+### Q16: How does the event loop interact with callbacks in `setTimeout`?
+> **A:** When you call `setTimeout(callback, delay)`:
+> 1. The timer is registered in the **Web APIs** (browser) or **libuv** (Node.js)
+> 2. JS execution continues immediately (non-blocking)
+> 3. After the delay, the callback is placed in the **callback queue** (task queue)
+> 4. The **event loop** checks if the **call stack** is empty
+> 5. When empty, it picks the callback from the queue and pushes it to the call stack
+> 6. The callback executes
+>
+> ```js
+> console.log("1");
+> setTimeout(() => console.log("2"), 0); // Even with 0ms delay!
+> console.log("3");
+>
+> // Output: 1, 3, 2
+> // Why? "2" goes to callback queue, only runs after call stack is empty
+> ```
+>
+> **Key insight:** `setTimeout(fn, 0)` doesn't mean "run immediately" — it means "run as soon as possible *after* the current execution context finishes."
+
+---
+
+### Q17: What is function currying and why is it useful?
+> **A:** Currying transforms a function with multiple arguments into a sequence of functions, each taking a single argument: `f(a, b, c)` → `f(a)(b)(c)`.
+>
+> **Why it's useful:**
+> 1. **Partial application** — Pre-fill some arguments to create specialized functions
+> 2. **Reusability** — Create variations from one base function
+> 3. **Composition** — Curried functions work well with `pipe` and `compose`
+>
+> ```js
+> // Regular function
+> const add = (a, b, c) => a + b + c;
+> add(1, 2, 3); // 6
+>
+> // Curried version
+> const curriedAdd = a => b => c => a + b + c;
+> curriedAdd(1)(2)(3); // 6
+>
+> // Power: partial application
+> const addOne = curriedAdd(1);       // a is fixed to 1
+> const addOneAndTwo = addOne(2);     // b is fixed to 2
+> console.log(addOneAndTwo(10));       // 13 (1 + 2 + 10)
+>
+> // Real use: configurable logger
+> const log = level => context => msg => `[${level}] [${context}] ${msg}`;
+> const warn = log("WARN");
+> const warnDB = warn("Database");
+> console.log(warnDB("Connection failed")); // [WARN] [Database] Connection failed
+> ```
+
+---
+
+### Q18: Write a `once` function that ensures a function can only be called once.
+> **A:**
+> ```js
+> function once(fn) {
+>   let called = false;
+>   let result;
+>
+>   return function (...args) {
+>     if (!called) {
+>       called = true;
+>       result = fn.apply(this, args);
+>     }
+>     return result; // Return cached result on subsequent calls
+>   };
+> }
+>
+> // Usage:
+> const initApp = once(() => {
+>   console.log("Initializing...");
+>   return "initialized";
+> });
+>
+> initApp(); // "Initializing..." → returns "initialized"
+> initApp(); // (no log) → returns "initialized" (cached)
+> initApp(); // (no log) → returns "initialized" (cached)
+> ```
+>
+> **How it works:** Uses closure to track `called` state. First call sets `called = true` and caches `result`. Subsequent calls return cached result without executing `fn`.
+
+---
+
+### Q19: What's the difference between `compose` and `pipe`?
+> **A:** Both combine multiple functions into one. The difference is **execution order**:
+> - **`compose`**: Right-to-left (mathematical notation: $f \circ g = f(g(x))$)
+> - **`pipe`**: Left-to-right (more readable, like a data pipeline)
+>
+> ```js
+> const double = x => x * 2;
+> const addTen = x => x + 10;
+> const square = x => x ** 2;
+>
+> // compose: reads right-to-left
+> const composed = compose(square, addTen, double);
+> composed(3); // double(3)=6 → addTen(6)=16 → square(16)=256
+>
+> // pipe: reads left-to-right (same result, more intuitive)
+> const piped = pipe(double, addTen, square);
+> piped(3); // double(3)=6 → addTen(6)=16 → square(16)=256
+>
+> // Implementation:
+> const compose = (...fns) => x => fns.reduceRight((acc, fn) => fn(acc), x);
+> const pipe = (...fns) => x => fns.reduce((acc, fn) => fn(acc), x);
+> ```
+
+---
+
+### Q20: Explain closures in the context of HOFs that return functions.
+> **A:** When a HOF returns a function, the returned function *closes over* (remembers) variables from the outer function's scope — even after the outer function has finished executing. This is called a **closure**.
+>
+> ```js
+> function createCounter(start) {
+>   let count = start; // This variable is "closed over"
+>
+>   return function () {
+>     count++; // Inner function accesses outer scope's 'count'
+>     return count;
+>   };
+> }
+>
+> const counter1 = createCounter(0);
+> const counter2 = createCounter(100);
+>
+> console.log(counter1()); // 1
+> console.log(counter1()); // 2  — 'count' persists between calls
+> console.log(counter2()); // 101 — different closure, different 'count'
+> ```
+>
+> **Why closures matter for HOFs:**
+> - Factory functions (like `createCounter`) create independent instances
+> - Memoization uses closures to cache results
+> - Curried functions close over pre-filled arguments
+> - Debounce/throttle use closures to track timers and state
+
+---
+
+## 11. Code Tracing Exercise
+
+### Exercise: Trace the Execution of a Curried Function with Closures
+
+```js
+function createMultiplier(factor) {
+  console.log(`[Outer] factor = ${factor}`);
+  
+  return function multiply(number) {
+    console.log(`[Inner] number = ${number}, factor = ${factor}`);
+    return number * factor;
+  };
+}
+
+const double = createMultiplier(2);
+const triple = createMultiplier(3);
+
+console.log(double(5));
+console.log(triple(5));
+console.log(double(10));
+```
+
+**Step-by-Step Execution:**
+
+```
+STEP 1: createMultiplier(2) is called
+        ├── Logs: "[Outer] factor = 2"
+        ├── Creates inner function 'multiply' (with factor=2 in closure)
+        ├── Returns the inner function
+        └── 'double' now holds the inner function (factor=2 closed over)
+
+STEP 2: createMultiplier(3) is called
+        ├── Logs: "[Outer] factor = 3"
+        ├── Creates NEW inner function (with factor=3 in closure)
+        ├── Returns the inner function
+        └── 'triple' now holds a DIFFERENT function (factor=3 closed over)
+
+STEP 3: double(5) is called
+        ├── Logs: "[Inner] number = 5, factor = 2"  (factor from closure!)
+        ├── Returns: 5 * 2 = 10
+        └── console.log prints: 10
+
+STEP 4: triple(5) is called
+        ├── Logs: "[Inner] number = 5, factor = 3"  (different closure!)
+        ├── Returns: 5 * 3 = 15
+        └── console.log prints: 15
+
+STEP 5: double(10) is called
+        ├── Logs: "[Inner] number = 10, factor = 2" (same closure as step 3)
+        ├── Returns: 10 * 2 = 20
+        └── console.log prints: 20
+```
+
+**Complete Output:**
+```
+[Outer] factor = 2
+[Outer] factor = 3
+[Inner] number = 5, factor = 2
+10
+[Inner] number = 5, factor = 3
+15
+[Inner] number = 10, factor = 2
+20
+```
+
+**Memory Diagram:**
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          MEMORY STATE                                   │
+├─────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  Global Scope                                                           │
+│  ├── createMultiplier: [function]                                       │
+│  ├── double: [function multiply] ──┐                                    │
+│  └── triple: [function multiply] ──┼──┐                                 │
+│                                    │  │                                 │
+│                                    │  │                                 │
+│  Closure 1 (created by call 1)     │  │                                 │
+│  ┌─────────────────────────────┐   │  │                                 │
+│  │ factor: 2                   │◄──┘  │                                 │
+│  │ (closed over by 'double')   │      │                                 │
+│  └─────────────────────────────┘      │                                 │
+│                                       │                                 │
+│  Closure 2 (created by call 2)        │                                 │
+│  ┌─────────────────────────────┐      │                                 │
+│  │ factor: 3                   │◄─────┘                                 │
+│  │ (closed over by 'triple')   │                                        │
+│  └─────────────────────────────┘                                        │
+│                                                                         │
+│  'double' and 'triple' have DIFFERENT closures with DIFFERENT values!   │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 12. Event Loop & Callbacks — How Async HOFs Work
+
+Understanding the event loop is crucial for working with async callbacks like `setTimeout`, `addEventListener`, and `Promise.then`.
+
+### The Event Loop Model
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      JAVASCRIPT RUNTIME                                 │
+│                                                                         │
+│  ┌───────────────┐                      ┌────────────────────────────┐  │
+│  │  CALL STACK   │                      │       WEB APIs             │  │
+│  │               │                      │  (Browser/Node.js)         │  │
+│  │ ┌───────────┐ │                      │                            │  │
+│  │ │ function  │ │  ─── setTimeout ───▶ │  • setTimeout timers       │  │
+│  │ ├───────────┤ │                      │  • DOM events              │  │
+│  │ │ function  │ │                      │  • fetch requests          │  │
+│  │ └───────────┘ │                      │  • setInterval timers      │  │
+│  └───────────────┘                      └───────────┬────────────────┘  │
+│         ▲                                           │                   │
+│         │                                           │ (after delay/     │
+│         │                                           │  event occurs)    │
+│         │                                           ▼                   │
+│         │                               ┌────────────────────────────┐  │
+│  ┌──────┴──────┐                        │     CALLBACK QUEUE         │  │
+│  │ EVENT LOOP  │◄─── picks callback ─── │  (Task Queue)              │  │
+│  │ "Is stack   │                        │                            │  │
+│  │  empty?"    │                        │  callback1 │ callback2 │...│  │
+│  └─────────────┘                        └────────────────────────────┘  │
+│                                                                         │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+### Tracing `setTimeout` Callback Execution
+
+```js
+console.log("Start");                          // 1️⃣
+
+setTimeout(() => {                             // 2️⃣
+  console.log("Timeout callback");
+}, 0);
+
+Promise.resolve().then(() => {                 // 3️⃣
+  console.log("Promise callback");
+});
+
+console.log("End");                            // 4️⃣
+
+// Output:
+// Start
+// End
+// Promise callback  ← Microtask queue (higher priority)
+// Timeout callback  ← Callback queue (lower priority)
+```
+
+**Execution Order Explained:**
+
+```
+CALL STACK                  CALLBACK QUEUE       MICROTASK QUEUE
+───────────────────────────────────────────────────────────────────
+1. console.log("Start")     [ ]                  [ ]
+   → prints "Start"
+
+2. setTimeout(cb, 0)        [ ]                  [ ]
+   → registers timer in Web APIs
+   → JS continues (non-blocking!)
+
+3. Promise.resolve().then   [ ]                  [Promise cb]
+   → promise resolved
+   → callback added to MICROTASK queue
+
+4. console.log("End")       [setTimeout cb]      [Promise cb]
+   → prints "End"
+   → (timer finished, callback queued)
+
+STACK IS NOW EMPTY — Event loop checks queues!
+
+5. Microtasks run FIRST     [setTimeout cb]      [ ]
+   → Promise cb executes
+   → prints "Promise callback"
+
+6. Callback queue runs      [ ]                  [ ]
+   → setTimeout cb executes
+   → prints "Timeout callback"
+```
+
+**Key Insight:** Microtasks (Promises) have **higher priority** than macrotasks (setTimeout). The event loop *drains the entire microtask queue* before picking from the callback queue.
+
+### Why This Matters for HOFs
+
+When you pass callbacks to async HOFs like `setTimeout`, `fetch().then()`, or `addEventListener`:
+
+1. **Your callback is NOT executed immediately** — it's scheduled
+2. **The HOF handles the async work** (timer, network, event)
+3. **Your callback runs later** when the event loop picks it up
+4. **Closures preserve context** — your callback "remembers" variables from when it was created
+
+```js
+function createDelayedLogger(message) {
+  // 'message' is closed over by the callback
+  setTimeout(() => {
+    console.log(message); // Can still access 'message' even after createDelayedLogger returned!
+  }, 1000);
+}
+
+createDelayedLogger("Hello");  // Immediately returns, callback runs 1 second later
+createDelayedLogger("World");  // Another independent callback with different closure
+```
+
+---
+
+## 13. Cheat Sheet
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -1301,6 +2017,21 @@ console.log(nums.sort((a, b) => b - a)); // [21, 10, 2, 1]  ✅ descending
 │ Once                       │ HOF ensures fn runs only once             │
 │ IIFE                       │ (fn)() — define + call immediately        │
 │ Middleware (Express)       │ fn that returns fn; HOF in frameworks     │
+│ Debounce 🔥                │ Wait for quiet period before executing    │
+│ Throttle 🔥                │ Execute at most once per time interval    │
+└────────────────────────────┴───────────────────────────────────────────┘
+
+┌────────────────────────────────────────────────────────────────────────┐
+│              DEBOUNCE vs THROTTLE — Quick Reference 🔥                 │
+├────────────────────────────┬───────────────────────────────────────────┤
+│ Debounce                   │ "Wait until activity stops"               │
+│   → Use for               │ Search input, resize, auto-save           │
+│   → Behavior              │ Resets timer on each call; runs once      │
+│                           │ after delay with no new calls             │
+├────────────────────────────┼───────────────────────────────────────────┤
+│ Throttle                   │ "Run at a steady rate"                    │
+│   → Use for               │ Scroll, mousemove, API rate limiting      │
+│   → Behavior              │ Runs at most once per interval            │
 └────────────────────────────┴───────────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -1327,7 +2058,7 @@ console.log(nums.sort((a, b) => b - a)); // [21, 10, 2, 1]  ✅ descending
 ---
 
 > **Summary in one paragraph:**
-> JavaScript has **first-class functions** — a language feature meaning functions are values. Because they are values, you can store them in variables/objects, pass them to other functions (as callbacks), and return them from functions (as factories). This enables **higher-order functions** (HOFs) — a powerful pattern where functions either receive or return other functions. HOFs like `map`, `filter`, `reduce`, and `addEventListener` abstract away repetitive logic. Patterns like currying, memoization, composition (`compose`/`pipe`), decorators, and IIFE are all built on top of HOFs. Arrow functions are the preferred callback syntax but have no own `this`, `arguments`, or `prototype` — knowing when to use regular vs arrow functions separates junior devs from senior ones. Mastering all of this is key to writing clean, reusable, functional-style JavaScript and crushing front-end/full-stack interviews.
+> JavaScript has **first-class functions** — a language feature meaning functions are values. Because they are values, you can store them in variables/objects, pass them to other functions (as callbacks), and return them from functions (as factories). This enables **higher-order functions** (HOFs) — a powerful pattern where functions either receive or return other functions. HOFs like `map`, `filter`, `reduce`, and `addEventListener` abstract away repetitive logic. Patterns like currying, memoization, composition (`compose`/`pipe`), decorators, IIFE, **debounce**, and **throttle** are all built on top of HOFs. Arrow functions are the preferred callback syntax but have no own `this`, `arguments`, or `prototype` — knowing when to use regular vs arrow functions separates junior devs from senior ones. Understanding how callbacks interact with the **event loop** (call stack, callback queue, microtask queue) is essential for async JavaScript. Mastering all of this is key to writing clean, reusable, functional-style JavaScript and crushing front-end/full-stack interviews.
 
 ---
 
